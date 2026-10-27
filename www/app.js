@@ -1,7 +1,8 @@
-/* MyFood iOS app - vanilla JS SPA */
+/* MyFood iOS app - tab 架构 SPA (中心tab=地图, 默认打开) */
 const app = document.getElementById("app");
 let settings = null;
 let todayRecords = [];
+let currentTab = "map";
 
 function el(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstElementChild; }
 function toast(msg, ok) {
@@ -10,7 +11,6 @@ function toast(msg, ok) {
   setTimeout(() => t.remove(), 1800);
 }
 function fmtTime(v) { return (v || "").replace("T", " ").slice(0, 16); }
-
 function priceText(p) {
   if (Array.isArray(p)) {
     const parts = [];
@@ -21,11 +21,54 @@ function priceText(p) {
   return p != null ? String(p) : "";
 }
 
-/* ---------- 记录页 ---------- */
+/* ---------- 底部 tab 栏 ---------- */
+const TABS = [
+  { id: "history", icon: "📋", label: "历史" },
+  { id: "record", icon: "📸", label: "记录" },
+  { id: "map", icon: "🗺", label: "地图", center: true },
+  { id: "tracks", icon: "📅", label: "轨迹" },
+  { id: "settings", icon: "⚙️", label: "设置" },
+];
+
+function renderTabBar() {
+  const bar = el(`<div id="tabbar" style="position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #eee;display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:50"></div>`);
+  TABS.forEach((t) => {
+    const active = currentTab === t.id;
+    if (t.center) {
+      const item = el(`<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;padding:4px 0">
+        <div style="width:52px;height:52px;border-radius:50%;background:${active ? "#66508f" : "#8b74b3"};display:flex;align-items:center;justify-content:center;margin-top:-18px;box-shadow:0 2px 8px rgba(102,80,143,.4)"><span style="font-size:24px">🗺</span></div>
+        <span style="font-size:11px;color:${active ? "#66508f" : "#999"};margin-top:2px">地图</span>
+      </div>`);
+      item.onclick = () => switchTab(t.id);
+      bar.appendChild(item);
+    } else {
+      const item = el(`<div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 0;cursor:pointer">
+        <span style="font-size:20px;filter:${active ? "none" : "grayscale(1)"};opacity:${active ? 1 : 0.5}">${t.icon}</span>
+        <span style="font-size:11px;color:${active ? "#66508f" : "#999"};margin-top:2px">${t.label}</span>
+      </div>`);
+      item.onclick = () => switchTab(t.id);
+      bar.appendChild(item);
+    }
+  });
+  document.body.querySelectorAll("#tabbar").forEach((n) => n.remove());
+  document.body.appendChild(bar);
+}
+
+function switchTab(id) {
+  currentTab = id;
+  renderTabBar();
+  if (id === "map") renderMapPage();
+  else if (id === "record") renderHome();
+  else if (id === "history") renderHistory();
+  else if (id === "tracks") renderTrackDays();
+  else if (id === "settings") renderSettings();
+}
+
+/* ---------- 记录页 (原首页) ---------- */
 async function renderHome() {
   app.innerHTML = `<div class="loading">加载中…</div>`;
   if (!settings) {
-    try { settings = await api.getConfig(); } catch (e) { app.innerHTML = `<div class="empty">配置加载失败，点击重试</div>`; app.onclick = renderHome; return; }
+    try { settings = await api.getConfig(); } catch (e) { app.innerHTML = `<div class="empty">配置加载失败，点击重试</div>`; app.onclick = () => { app.onclick = null; renderHome(); }; return; }
   }
   await loadToday();
   drawHome();
@@ -38,13 +81,6 @@ async function loadToday() {
 }
 function drawHome() {
   app.innerHTML = "";
-  const actions = el(`<div class="actions">
-    <div class="action-btn" id="btnAlbum"><span class="ico">🖼</span><span class="txt">从相册选</span></div>
-    <div class="action-btn" id="btnCamera"><span class="ico">📷</span><span class="txt">拍照</span></div>
-    <div class="action-btn" id="btnMap"><span class="ico">🗺</span><span class="txt">轨迹</span></div>
-  </div>`);
-  app.appendChild(actions);
-  document.getElementById("btnMap").onclick = () => renderMapPage();
   app.appendChild(el(`<div class="section-title">今日记录</div>`));
   if (!todayRecords.length) app.appendChild(el(`<div class="empty">今天还没有记录</div>`));
   todayRecords.forEach((rec) => {
@@ -60,9 +96,16 @@ function drawHome() {
     card.querySelector(".record-comment-btn").onclick = (e) => { e.stopPropagation(); openComment(rec); };
     app.appendChild(card);
   });
+  const actions = el(`<div class="actions" style="margin-top:16px">
+    <div class="action-btn" id="btnAlbum"><span class="ico">🖼</span><span class="txt">从相册选</span></div>
+    <div class="action-btn" id="btnCamera"><span class="ico">📷</span><span class="txt">拍照</span></div>
+  </div>`);
+  app.appendChild(actions);
+  document.getElementById("btnAlbum").onclick = () => saveQuick();
+  document.getElementById("btnCamera").onclick = () => saveQuick();
 }
 
-async function saveQuick(sourceType) {
+async function saveQuick() {
   if (!settings) { toast("配置加载中"); return; }
   try {
     const upload = await api.pickAndUpload(settings.image);
@@ -79,6 +122,35 @@ async function saveQuick(sourceType) {
   } catch (e) {
     if ((e.message || "").indexOf("未选择") === -1) toast(e.message || "保存失败");
   }
+}
+
+/* ---------- 历史列表 ---------- */
+async function renderHistory() {
+  app.innerHTML = `<div class="loading">加载中…</div>`;
+  let items = [];
+  try {
+    let page = 1;
+    while (true) {
+      const r = await api.getFoods(page, 50, "", false);
+      items = items.concat(r.items || []);
+      if (!r.items || r.items.length < 50 || page >= 20) break;
+      page++;
+    }
+  } catch (e) { app.innerHTML = `<div class="empty">加载失败</div>`; return; }
+  app.innerHTML = "";
+  app.appendChild(el(`<div class="section-title">全部记录 (${items.length})</div>`));
+  if (!items.length) app.appendChild(el(`<div class="empty">还没有记录</div>`));
+  items.forEach((rec) => {
+    const card = el(`<div class="record-card">
+      ${rec.image_path ? `<img src="${api.imageUrl(rec.image_path)}" />` : ""}
+      <div class="record-body">
+        <div class="record-name">${rec.name || "未命名"}</div>
+        <div class="record-time">${fmtTime(rec.taken_at || rec.create_at)}</div>
+      </div>
+    </div>`);
+    card.onclick = () => renderDetail(rec.id);
+    app.appendChild(card);
+  });
 }
 
 /* ---------- 评论 ---------- */
@@ -127,11 +199,11 @@ async function renderDetail(id) {
   </div>`);
   app.appendChild(body);
   (food.comment || []).forEach((c) => body.appendChild(el(`<div class="comment-item" style="margin-top:8px">${c}</div>`)));
-  document.getElementById("backBtn").onclick = renderHome;
+  document.getElementById("backBtn").onclick = () => switchTab(currentTab);
   document.getElementById("editBtn").onclick = () => renderEdit(food);
   document.getElementById("delBtn").onclick = () => {
     if (!confirm("确定删除这条记录吗？")) return;
-    api.deleteFood(id).then(() => { toast("已删除", true); renderHome(); }).catch((e) => toast(e.message || "删除失败"));
+    api.deleteFood(id).then(() => { toast("已删除", true); switchTab(currentTab); }).catch((e) => toast(e.message || "删除失败"));
   };
 }
 
@@ -165,5 +237,43 @@ function renderEdit(food) {
   };
 }
 
+/* ---------- 轨迹天列表 ---------- */
+async function renderTrackDays() {
+  app.innerHTML = `<div class="loading">加载中…</div>`;
+  let days = [];
+  try { days = (await api.request("/api/tracks/days")).days || []; } catch (e) {}
+  app.innerHTML = "";
+  app.appendChild(el(`<div class="section-title">轨迹</div>`));
+  if (!days.length) app.appendChild(el(`<div class="empty">还没有轨迹记录<br><span style="font-size:12px">去地图页点「开始记录」</span></div>`));
+  days.forEach((d) => {
+    const card = el(`<div class="record-card"><div class="record-body"><div class="record-name">${d.day}</div><div class="record-time">${d.points} 个定位点</div></div><span style="color:#999">›</span></div>`);
+    card.onclick = () => { viewDay = d.day; switchTab("map"); };
+    app.appendChild(card);
+  });
+}
+let viewDay = null;
+
+/* ---------- 设置页 ---------- */
+function renderSettings() {
+  app.innerHTML = `<div class="section-title">设置</div>
+    <div class="record-card"><div class="record-body">
+      <div class="record-name">后端</div>
+      <div class="record-time">${api.BASE_URL}</div>
+    </div></div>
+    <div class="record-card"><div class="record-body">
+      <div class="record-name">连接说明</div>
+      <div class="record-time">后端需通过代理访问，请保持 Clash 开启</div>
+    </div></div>
+    <div class="record-card" id="clearTrack"><div class="record-body">
+      <div class="record-name" style="color:#c0392b">清除本地缓存</div>
+      <div class="record-time">重新加载配置与今日记录</div>
+    </div></div>`;
+  document.getElementById("clearTrack").onclick = () => { settings = null; todayRecords = []; toast("已清除", true); switchTab("record"); };
+}
+
 /* ---------- 启动 ---------- */
-document.addEventListener("DOMContentLoaded", renderHome);
+document.addEventListener("DOMContentLoaded", () => {
+  app.style.paddingBottom = "80px";
+  renderTabBar();
+  switchTab("map");
+});
