@@ -3,3 +3,5 @@ unpackage/
 dist/
 .DS_Store
 *.ipa
+build/
+*.ipa

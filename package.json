@@ -1,0 +1,18 @@
+{
+  "name": "myfood-ios",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MyFood iOS app (Capacitor)",
+  "scripts": {
+    "build:web": "node scripts/build-web.js",
+    "ios:sync": "node scripts/build-web.js && cap sync ios",
+    "ios:open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/ios": "^7.4.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.4"
+  }
+}
