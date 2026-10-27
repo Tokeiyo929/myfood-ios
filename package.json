@@ -4,15 +4,13 @@
   "private": true,
   "description": "MyFood iOS app (Capacitor)",
   "scripts": {
-    "build:web": "node scripts/build-web.js",
-    "ios:sync": "node scripts/build-web.js && cap sync ios",
-    "ios:open": "cap open ios"
+    "ios:sync": "npx cap sync ios"
   },
   "dependencies": {
-    "@capacitor/core": "^7.4.4",
-    "@capacitor/ios": "^7.4.4"
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.4.4"
+    "@capacitor/cli": "^8.5.3"
   }
 }
