@@ -41,8 +41,10 @@ function drawHome() {
   const actions = el(`<div class="actions">
     <div class="action-btn" id="btnAlbum"><span class="ico">🖼</span><span class="txt">从相册选</span></div>
     <div class="action-btn" id="btnCamera"><span class="ico">📷</span><span class="txt">拍照</span></div>
+    <div class="action-btn" id="btnMap"><span class="ico">🗺</span><span class="txt">轨迹</span></div>
   </div>`);
   app.appendChild(actions);
+  document.getElementById("btnMap").onclick = () => renderMapPage();
   app.appendChild(el(`<div class="section-title">今日记录</div>`));
   if (!todayRecords.length) app.appendChild(el(`<div class="empty">今天还没有记录</div>`));
   todayRecords.forEach((rec) => {
