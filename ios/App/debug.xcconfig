@@ -1,0 +1,6 @@
+//
+//  debug.xcconfig
+//  debug settings for MyFood native app
+//
+CAPACITOR_DEBUG = NO
+OTHER_SWIFT_FLAGS = $(inherited)

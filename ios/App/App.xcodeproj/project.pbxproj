@@ -7,27 +7,36 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
-		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
-		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
-		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
-		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
-		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		AA00000100000000000000AAB /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000AAA /* API.swift */; };
+		AA00000200000000000000AAB /* TrackRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000AAA /* TrackRecorder.swift */; };
+		AA00000300000000000000AAB /* MainTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000300000000000000AAA /* MainTabBar.swift */; };
+		AA00000400000000000000AAB /* MapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000400000000000000AAA /* MapViewController.swift */; };
+		AA00000500000000000000AAB /* RecordViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000500000000000000AAA /* RecordViewController.swift */; };
+		AA00000600000000000000AAB /* HistoryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000600000000000000AAA /* HistoryViewController.swift */; };
+		AA00000700000000000000AAB /* DetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000700000000000000AAA /* DetailViewController.swift */; };
+		AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000800000000000000AAA /* TrackDaysViewController.swift */; };
+		AA00000900000000000000AAB /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000900000000000000AAA /* SettingsViewController.swift */; };
+				504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+				504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
-		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
-		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
-		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
+		AA00000100000000000000AAA /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
+		AA00000200000000000000AAA /* TrackRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecorder.swift; sourceTree = "<group>"; };
+		AA00000300000000000000AAA /* MainTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBar.swift; sourceTree = "<group>"; };
+		AA00000400000000000000AAA /* MapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewController.swift; sourceTree = "<group>"; };
+		AA00000500000000000000AAA /* RecordViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordViewController.swift; sourceTree = "<group>"; };
+		AA00000600000000000000AAA /* HistoryViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewController.swift; sourceTree = "<group>"; };
+		AA00000700000000000000AAA /* DetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailViewController.swift; sourceTree = "<group>"; };
+		AA00000800000000000000AAA /* TrackDaysViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDaysViewController.swift; sourceTree = "<group>"; };
+		AA00000900000000000000AAA /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
@@ -37,7 +46,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,14 +73,19 @@
 			isa = PBXGroup;
 			children = (
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
-				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
-				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
-				2FAD9762203C412B000D30F8 /* config.xml */,
-				50B271D01FEDC1A000F3C39B /* public */,
+				AA00000100000000000000AAA /* API.swift */,
+				AA00000200000000000000AAA /* TrackRecorder.swift */,
+				AA00000300000000000000AAA /* MainTabBar.swift */,
+				AA00000400000000000000AAA /* MapViewController.swift */,
+				AA00000500000000000000AAA /* RecordViewController.swift */,
+				AA00000600000000000000AAA /* HistoryViewController.swift */,
+				AA00000700000000000000AAA /* DetailViewController.swift */,
+				AA00000800000000000000AAA /* TrackDaysViewController.swift */,
+				AA00000900000000000000AAA /* SettingsViewController.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -93,10 +106,7 @@
 			dependencies = (
 			);
 			name = App;
-			packageProductDependencies = (
-				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
-			);
-			productName = App;
+						productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -125,9 +135,6 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
-			packageReferences = (
-				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
-			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -143,11 +150,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
-				50B271D11FEDC1A000F3C39B /* public in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
-				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
-				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
-				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -160,20 +163,21 @@
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
+				AA00000100000000000000AAB /* API.swift in Sources */,
+				AA00000200000000000000AAB /* TrackRecorder.swift in Sources */,
+				AA00000300000000000000AAB /* MainTabBar.swift in Sources */,
+				AA00000400000000000000AAB /* MapViewController.swift in Sources */,
+				AA00000500000000000000AAB /* RecordViewController.swift in Sources */,
+				AA00000600000000000000AAB /* HistoryViewController.swift in Sources */,
+				AA00000700000000000000AAB /* DetailViewController.swift in Sources */,
+				AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */,
+				AA00000900000000000000AAB /* SettingsViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
-		504EC30B1FED79650016851F /* Main.storyboard */ = {
-			isa = PBXVariantGroup;
-			children = (
-				504EC30C1FED79650016851F /* Base */,
-			);
-			name = Main.storyboard;
-			sourceTree = "<group>";
-		};
 		504EC3101FED79650016851F /* LaunchScreen.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -361,20 +365,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "CapApp-SPM";
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		4D22ABE82AF431CB00220026 /* CapApp-SPM */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */;
-			productName = "CapApp-SPM";
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
 }

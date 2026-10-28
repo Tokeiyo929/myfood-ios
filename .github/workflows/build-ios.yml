@@ -11,17 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Sync web assets into iOS project
-        run: npx cap sync ios
-
-      - name: Build unsigned ipa
+      - name: Build unsigned ipa (native Swift)
         run: |
           cd ios/App
           xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
