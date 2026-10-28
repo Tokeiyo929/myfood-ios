@@ -86,7 +86,7 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
                     "comment": [],
                     "image_path": upload["path"] as? String ?? "",
                     "image_metadata": meta,
-                    "client_key": "\(Int(Date().timeIntervalSince1970 * 1000), radix: 36)-\(Int.random(in: 0..<1_000_000), radix: 36)",
+                    "client_key": String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36),
                 ]
                 _ = try await API.submitFood(record)
                 DispatchQueue.main.async {

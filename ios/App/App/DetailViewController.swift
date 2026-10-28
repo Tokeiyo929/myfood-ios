@@ -128,8 +128,8 @@ class DetailViewController: UIViewController {
         }
 
         let btns = UIStackView(arrangedSubviews: [
-            self.button("编辑", style: .primary, action: #selector(self.editTapped)),
-            self.button("删除", style: .danger, action: #selector(self.deleteTapped)),
+            self.button("编辑", style: "primary", action: #selector(self.editTapped)),
+            self.button("删除", style: "danger", action: #selector(self.deleteTapped)),
         ])
         btns.axis = .horizontal
         btns.spacing = 12
@@ -156,16 +156,16 @@ class DetailViewController: UIViewController {
         present(alert, animated: true)
     }
 
-    private func button(_ title: String, style: UIButton.ButtonStyle, action: Selector) -> UIButton {
+    private func button(_ title: String, style: String, action: Selector) -> UIButton {
         let b = UIButton(type: .system)
         b.setTitle(title, for: .normal)
         b.addTarget(self, action: action, for: .touchUpInside)
         b.layer.cornerRadius = 10
         b.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        if style == .primary {
+        if style == "primary" {
             b.backgroundColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1)
             b.setTitleColor(.white, for: .normal)
-        } else if style == .danger {
+        } else if style == "danger" {
             b.backgroundColor = UIColor(white: 0.95, alpha: 1)
             b.setTitleColor(.systemRed, for: .normal)
         } else {
@@ -253,7 +253,7 @@ class EditViewController: UIViewController {
             "categories": cats,
         ]
         Task {
-            do { _ = try await API.updateFoodDetails(foodId: food["id"] as! Int, fields: fields)
+            do { _ = try await API.updateFoodDetails(food["id"] as! Int, fields: fields)
                 DispatchQueue.main.async {
                     self.onSaved()
                     self.navigationController?.popViewController(animated: true)

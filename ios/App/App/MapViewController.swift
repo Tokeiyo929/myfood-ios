@@ -144,7 +144,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         let line = MKPolyline(coordinates: coords, count: coords.count)
         mapView.addOverlay(line)
         statusLabel.text = "\(coords.count)点"
-        infoLabel.text = viewDay != nil ? "历史轨迹 · \(day)" : ""
+        infoLabel.text = viewDay != nil ? "历史轨迹 · \(viewDay!)" : ""
     }
 
     private func addPointToLine(lat: Double, lng: Double) {
