@@ -47,6 +47,8 @@ enum SmokeTour {
         at(1.5) {
             snap("08-settings")
             finish()
+            log("exiting")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) } // 仅 -autoSmoke
         }
     }
 
