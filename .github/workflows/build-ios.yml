@@ -83,6 +83,13 @@ jobs:
             echo "== after 10s process check =="
             sleep 10
             xcrun simctl spawn "$UDID" launchctl list 2>&1 | grep -i myfood || echo "PROCESS NOT RUNNING"
+            echo "== crash reports =="
+            mkdir -p crashlogs
+            cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"
+            cp ~/Library/Logs/DiagnosticReports/*pp-* crashlogs/ 2>/dev/null || true
+            ls -la crashlogs/ || true
+            echo "== sim app log tail =="
+            xcrun simctl spawn "$UDID" log show --last 3m --predicate 'processImagePath CONTAINS "App"' 2>&1 | tail -60 || true
             echo "== container =="
             APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
             echo "APPC=$APPC"
@@ -101,6 +108,7 @@ jobs:
           mkdir -p smoke
           cp "$APPC/tmp/smoke/"*.png smoke/ 2>/dev/null || true
           cp "$APPC/tmp/smoke/"*.txt smoke/ 2>/dev/null || true
+          cp crashlogs/* smoke/ 2>/dev/null || true
           ls -lh smoke/ || true
 
       - name: Upload IPA
@@ -122,7 +130,8 @@ jobs:
 
       - name: Publish IPA to release
         run: |
-          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt \
+          CR=$(ls crashlogs/* 2>/dev/null || true)
+          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt $CR \
             --title "MyFood 未签名 IPA (build ${{ github.run_number }})" \
             --notes "Sideloadly 直接装这个 ipa。功能巡访截图见 smoke-screenshots artifact。" \
             --latest
