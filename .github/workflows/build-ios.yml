@@ -93,6 +93,10 @@ jobs:
             wait "$CPID" 2>/dev/null || true
             echo "-- console output --"
             head -80 smoke-console.txt || true
+            echo "== codesign verify =="
+            codesign -dv ios/App/build/Build/Products/Debug-iphonesimulator/App.app 2>&1 || echo "NOT SIGNED"
+            echo "== AMFI / termination logs =="
+            xcrun simctl spawn "$UDID" log show --last 5m --predicate 'eventMessage CONTAINS[c] "myfood" OR eventMessage CONTAINS "AMFI" OR eventMessage CONTAINS "Sandbox"' 2>&1 | grep -iE "myfood|amfi|denied|killed|terminat" | head -30 || true
             echo "== container =="
             APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
             echo "APPC=$APPC"
