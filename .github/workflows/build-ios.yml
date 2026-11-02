@@ -82,8 +82,17 @@ jobs:
             xcrun simctl terminate "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
             xcrun simctl uninstall "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
             xcrun simctl install "$UDID" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
-            echo "== console launch (app exits itself after tour; 90s cap) =="
-            timeout 90 xcrun simctl launch --console "$UDID" com.tokeiyo929.myfood -autoSmoke 2>&1 | head -100 || echo "CONSOLE LAUNCH ENDED (rc=$?)"
+            echo "== console launch (app exits itself after tour; cap 120s) =="
+            xcrun simctl launch --console "$UDID" com.tokeiyo929.myfood -autoSmoke > smoke-console.txt 2>&1 &
+            CPID=$!
+            for i in $(seq 1 60); do
+              sleep 2
+              kill -0 "$CPID" 2>/dev/null || break
+            done
+            kill "$CPID" 2>/dev/null || true
+            wait "$CPID" 2>/dev/null || true
+            echo "-- console output --"
+            head -80 smoke-console.txt || true
             echo "== container =="
             APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
             echo "APPC=$APPC"
