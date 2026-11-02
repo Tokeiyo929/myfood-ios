@@ -82,42 +82,45 @@ jobs:
             xcrun simctl terminate "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
             xcrun simctl uninstall "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
             xcrun simctl install "$UDID" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
-            echo "== console launch (app exits itself after tour; cap 120s) =="
+            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
+            echo "APPC=$APPC"
+            mkdir -p smoke
+            rm -f "$APPC/tmp/smoke/"now-* "$APPC/tmp/smoke/"ack-* 2>/dev/null || true
+            echo "== console launch (marker/ack handshake; app exits after tour) =="
             xcrun simctl launch --console "$UDID" com.tokeiyo929.myfood -autoSmoke > smoke-console.txt 2>&1 &
             CPID=$!
-            for i in $(seq 1 60); do
-              sleep 2
-              kill -0 "$CPID" 2>/dev/null || break
+            # app 写 now-XX → runner 截屏写 ack-XX → app 走下一步；done.txt 结束
+            for i in $(seq 1 120); do
+              for n in 01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings; do
+                if [ -f "$APPC/tmp/smoke/now-$n" ] && [ ! -f "smoke/$n.png" ]; then
+                  sleep 1
+                  if xcrun simctl io "$UDID" screenshot "smoke/$n.png" 2>/dev/null; then
+                    : > "$APPC/tmp/smoke/ack-$n" 2>/dev/null || true
+                    echo "captured $n at ~${i}s"
+                  else
+                    echo "screenshot $n FAILED (will retry)"
+                  fi
+                fi
+              done
+              if [ -f "$APPC/tmp/smoke/done.txt" ]; then echo "tour done after ~${i}s"; break; fi
+              if ! kill -0 "$CPID" 2>/dev/null; then echo "app exited early at ~${i}s"; break; fi
+              sleep 1
             done
             kill "$CPID" 2>/dev/null || true
             wait "$CPID" 2>/dev/null || true
             echo "-- console output --"
             head -80 smoke-console.txt || true
-            echo "== codesign verify =="
-            codesign -dv ios/App/build/Build/Products/Debug-iphonesimulator/App.app 2>&1 || echo "NOT SIGNED"
-            echo "== AMFI / termination logs =="
-            xcrun simctl spawn "$UDID" log show --last 5m --predicate 'eventMessage CONTAINS[c] "myfood" OR eventMessage CONTAINS "AMFI" OR eventMessage CONTAINS "Sandbox"' 2>&1 | grep -iE "myfood|amfi|denied|killed|terminat" | head -30 || true
-            echo "== container =="
-            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
-            echo "APPC=$APPC"
             echo "== tmp/smoke listing =="
             ls -la "$APPC/tmp/smoke/" 2>&1 || true
-            echo "== poll done.txt (max 30s more) =="
-            for i in $(seq 1 15); do
-              sleep 2
-              if [ -f "$APPC/tmp/smoke/done.txt" ]; then echo "done after ~$((i*2))s"; break; fi
-            done
-            ls -la "$APPC/tmp/smoke/" 2>&1 || true
-            echo "== crash reports =="
-            mkdir -p crashlogs
-            cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"
-            cp ~/Library/Logs/DiagnosticReports/*pp-* crashlogs/ 2>/dev/null || true
-            ls -la crashlogs/ || true
+            echo "== screenshots =="
+            ls -la smoke/ || true
           } > smoke-debug.txt 2>&1 || true
           cat smoke-debug.txt || true
-          mkdir -p smoke
-          cp "$APPC/tmp/smoke/"*.png smoke/ 2>/dev/null || true
-          cp "$APPC/tmp/smoke/"*.txt smoke/ 2>/dev/null || true
+          cp "$APPC/tmp/smoke/"smoke-log.txt smoke/ 2>/dev/null || true
+          echo "== crash reports =="
+          mkdir -p crashlogs
+          cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"
+          cp ~/Library/Logs/DiagnosticReports/*pp-* crashlogs/ 2>/dev/null || true
           cp crashlogs/* smoke/ 2>/dev/null || true
           ls -lh smoke/ || true
 
