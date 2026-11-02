@@ -108,6 +108,18 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
         // 基本信息
         let basic = section("基本信息")
+        let ocrBtn = UIButton(type: .system)
+        ocrBtn.setTitle("📷 OCR识别", for: .normal)
+        ocrBtn.setTitleColor(Theme.primary, for: .normal)
+        ocrBtn.titleLabel?.font = .systemFont(ofSize: 13)
+        ocrBtn.contentEdgeInsets = UIEdgeInsets(top: 4, left: 8, bottom: 4, right: 8)
+        ocrBtn.layer.cornerRadius = 6
+        ocrBtn.layer.borderWidth = 1
+        ocrBtn.layer.borderColor = Theme.primary.withAlphaComponent(0.5).cgColor
+        ocrBtn.addTarget(self, action: #selector(startOcrFlow), for: .touchUpInside)
+        let ocrRow = UIStackView(arrangedSubviews: [spacer(), ocrBtn])
+        ocrRow.axis = .horizontal
+        basic.addArrangedSubview(ocrRow)
         nameField = field("产品名称")
         brandField = field("品牌")
         origField = field("原价", number: true)
@@ -367,10 +379,55 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
     private func pickReplace(source: UIImagePickerController.SourceType) {
         guard UIImagePickerController.isSourceTypeAvailable(source) else { Toast.show("来源不可用", view); return }
+        pickingForOcr = false
         let p = UIImagePickerController()
         p.sourceType = source
         p.delegate = self
         present(p, animated: true)
+    }
+
+    // MARK: - OCR（对齐小程序 📷 OCR识别 → 相册/拍照 → 字格划选）
+
+    private var pickingForOcr = false
+
+    @objc private func startOcrFlow() {
+        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "从相册选择", style: .default) { _ in self.ocrPick(source: .photoLibrary) })
+        alert.addAction(UIAlertAction(title: "拍照", style: .default) { _ in self.ocrPick(source: .camera) })
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        if let pop = alert.popoverPresentationController { pop.sourceView = view }
+        present(alert, animated: true)
+    }
+
+    private func ocrPick(source: UIImagePickerController.SourceType) {
+        guard UIImagePickerController.isSourceTypeAvailable(source) else { Toast.show("来源不可用", view); return }
+        pickingForOcr = true
+        let p = UIImagePickerController()
+        p.sourceType = source
+        p.delegate = self
+        present(p, animated: true)
+    }
+
+    private func presentOcr(_ image: UIImage) {
+        let ocr = OcrViewController(image: image)
+        ocr.onName = { [weak self] t in self?.nameField.text = t }
+        ocr.onBrand = { [weak self] t in self?.brandField.text = t }
+        ocr.onIngredient = { [weak self] t in self?.doConfirmIngredient(named: t, amount: nil) }
+        present(ocr, animated: false)
+    }
+
+    private func doConfirmIngredient(named n: String, amount: NSNumber?) {
+        Task {
+            do {
+                _ = try await API.addIngredient(n)
+                var item: [String: Any] = ["name": n]
+                if let a = amount { item["amount"] = a }
+                ingredients.append(item)
+                DispatchQueue.main.async { self.renderIngredients() }
+            } catch {
+                DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+            }
+        }
     }
 
     private func uploadReplace(_ image: UIImage) {
@@ -1062,7 +1119,7 @@ extension DetailViewController: UIImagePickerControllerDelegate, UINavigationCon
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         picker.dismiss(animated: true)
         guard let img = info[.originalImage] as? UIImage else { return }
-        uploadReplace(img)
+        if pickingForOcr { presentOcr(img) } else { uploadReplace(img) }
     }
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true) }
 }
