@@ -141,7 +141,8 @@ jobs:
       - name: Publish IPA to release
         run: |
           CR=$(ls crashlogs/* 2>/dev/null || true)
-          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt $CR \
+          PNGS=$(ls smoke/*.png 2>/dev/null || true)
+          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt $CR $PNGS \
             --title "MyFood 未签名 IPA (build ${{ github.run_number }})" \
             --notes "Sideloadly 直接装这个 ipa。功能巡访截图见 smoke-screenshots artifact。" \
             --latest
