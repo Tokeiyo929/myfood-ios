@@ -100,6 +100,7 @@ jobs:
           cat smoke-debug.txt || true
           mkdir -p smoke
           cp "$APPC/tmp/smoke/"*.png smoke/ 2>/dev/null || true
+          cp "$APPC/tmp/smoke/"*.txt smoke/ 2>/dev/null || true
           ls -lh smoke/ || true
 
       - name: Upload IPA
@@ -121,7 +122,7 @@ jobs:
 
       - name: Publish IPA to release
         run: |
-          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa \
+          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt \
             --title "MyFood 未签名 IPA (build ${{ github.run_number }})" \
             --notes "Sideloadly 直接装这个 ipa。功能巡访截图见 smoke-screenshots artifact。" \
             --latest

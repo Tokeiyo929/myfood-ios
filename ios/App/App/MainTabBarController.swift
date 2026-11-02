@@ -20,6 +20,11 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         selectedIndex = 2 // 默认地图
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        SmokeTour.start() // CI 冒烟巡访（仅 -autoSmoke 时生效，内部有防重入）
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         raiseCenterTab()

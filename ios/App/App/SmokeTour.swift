@@ -4,10 +4,13 @@ import UIKit
 // runner 端从 app 容器拷走上传。仅用于 CI 验证，不影响正常启动。
 enum SmokeTour {
     static let enabled = ProcessInfo.processInfo.arguments.contains("-autoSmoke")
+    private static var started = false
 
     static func start() {
-        guard enabled,
-              let tab = keyTab() else { return }
+        guard enabled, !started else { return }
+        started = true
+        log("boot")
+        guard let tab = keyTab() else { log("no key tab"); return }
         let nav0 = tab.viewControllers?[0] as? UINavigationController
 
         // 时间串联：历史 → 详情 → 记录 → 地图(中国/欧洲/排行榜) → 轨迹 → 设置
@@ -80,13 +83,33 @@ enum SmokeTour {
         }
         guard let data = img.pngData() else { return }
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("smoke")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: dir.appendingPathComponent("\(name).png"))
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: dir.appendingPathComponent("\(name).png"))
+            log("snap \(name) ok")
+        } catch { log("snap \(name) failed: \(error)") }
     }
 
     private static func finish() {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("smoke")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? "done".write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+        do {
+            try "done".write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+            log("finish ok")
+        } catch { log("finish failed: \(error)") }
+    }
+
+    // 诊断日志：写进 tmp/smoke/smoke-log.txt，随 CI artifact 上传
+    private static func log(_ line: String) {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("smoke")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = dir.appendingPathComponent("smoke-log.txt")
+        if let h = try? String(contentsOf: f, encoding: .utf8) {
+            try? (h + line + "
+").write(to: f, atomically: true, encoding: .utf8)
+        } else {
+            try? (line + "
+").write(to: f, atomically: true, encoding: .utf8)
+        }
     }
 }
