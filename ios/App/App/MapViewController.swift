@@ -45,7 +45,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         mapView.addSubview(statusLabel)
 
         toggleBtn = UIButton(type: .system)
-        toggleBtn.backgroundColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1)
+        toggleBtn.backgroundColor = Theme.primary
         toggleBtn.setTitleColor(.white, for: .normal)
         toggleBtn.titleLabel?.font = .boldSystemFont(ofSize: 16)
         toggleBtn.layer.cornerRadius = 10
@@ -161,7 +161,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
         let r = MKPolylineRenderer(polyline: line)
-        r.strokeColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1)
+        r.strokeColor = Theme.primary
         r.lineWidth = 4
         return r
     }

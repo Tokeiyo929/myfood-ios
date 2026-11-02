@@ -163,7 +163,7 @@ class DetailViewController: UIViewController {
         b.layer.cornerRadius = 10
         b.heightAnchor.constraint(equalToConstant: 44).isActive = true
         if style == "primary" {
-            b.backgroundColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1)
+            b.backgroundColor = Theme.primary
             b.setTitleColor(.white, for: .normal)
         } else if style == "danger" {
             b.backgroundColor = UIColor(white: 0.95, alpha: 1)
@@ -219,7 +219,7 @@ class EditViewController: UIViewController {
         stack.addArrangedSubview(catsField)
         let save = UIButton(type: .system)
         save.setTitle("保存", for: .normal)
-        save.backgroundColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1)
+        save.backgroundColor = Theme.primary
         save.setTitleColor(.white, for: .normal)
         save.layer.cornerRadius = 10
         save.heightAnchor.constraint(equalToConstant: 44).isActive = true

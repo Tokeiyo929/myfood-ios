@@ -16,6 +16,7 @@
 		AA00000700000000000000AAB /* DetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000700000000000000AAA /* DetailViewController.swift */; };
 		AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000800000000000000AAA /* TrackDaysViewController.swift */; };
 		AA00000900000000000000AAB /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000900000000000000AAA /* SettingsViewController.swift */; };
+		AA00000A00000000000000AAB /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000A00000000000000AAA /* Helpers.swift */; };
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -32,6 +33,7 @@
 		AA00000700000000000000AAA /* DetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailViewController.swift; sourceTree = "<group>"; };
 		AA00000800000000000000AAA /* TrackDaysViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDaysViewController.swift; sourceTree = "<group>"; };
 		AA00000900000000000000AAA /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		AA00000A00000000000000AAA /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helpers.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -86,6 +88,7 @@
 				AA00000700000000000000AAA /* DetailViewController.swift */,
 				AA00000800000000000000AAA /* TrackDaysViewController.swift */,
 				AA00000900000000000000AAA /* SettingsViewController.swift */,
+				AA00000A00000000000000AAA /* Helpers.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -172,6 +175,7 @@
 				AA00000700000000000000AAB /* DetailViewController.swift in Sources */,
 				AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */,
 				AA00000900000000000000AAB /* SettingsViewController.swift in Sources */,
+				AA00000A00000000000000AAB /* Helpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

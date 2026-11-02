@@ -16,7 +16,7 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         tracks.tabBarItem = UITabBarItem(title: "轨迹", image: UIImage(systemName: "calendar"), tag: 3)
         settings.tabBarItem = UITabBarItem(title: "设置", image: UIImage(systemName: "gearshape"), tag: 4)
         viewControllers = [history, record, map, tracks, settings].map { UINavigationController(rootViewController: $0) }
-        tabBar.tintColor = UIColor(red: 0.4, green: 0.31, blue: 0.56, alpha: 1) // #66508f
+        tabBar.tintColor = Theme.primary // #66508f
         selectedIndex = 2 // 默认地图
     }
 
