@@ -47,16 +47,21 @@ enum SmokeTour {
     // MARK: - 私有
 
     private static func keyTab() -> MainTabBarController? {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first(where: { $0.isKey })?
-            .rootViewController as? MainTabBarController
+        keyWindow()?.rootViewController as? MainTabBarController
     }
 
     private static func mapVC() -> FoodMapViewController? {
         (keyTab()?.viewControllers?[2] as? UINavigationController)?
             .viewControllers.first as? FoodMapViewController
+    }
+
+    // 平铺查找 keyWindow（避开 flatMap 类型推断坑）
+    private static func keyWindow() -> UIWindow? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let ws = scene as? UIWindowScene else { continue }
+            for w in ws.windows where w.isKey { return w }
+        }
+        return nil
     }
 
     private static var clock: TimeInterval = 0
@@ -67,10 +72,7 @@ enum SmokeTour {
     }
 
     private static func snap(_ name: String) {
-        guard let window = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap({ $0.windows })
-            .first(where: { $0.isKey }),
+        guard let window = keyWindow(),
             window.bounds.size.width > 0 else { return }
         let renderer = UIGraphicsImageRenderer(size: window.bounds.size)
         let img = renderer.image { ctx in
