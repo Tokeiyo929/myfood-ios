@@ -59,7 +59,7 @@ enum SmokeTour {
     private static func keyWindow() -> UIWindow? {
         for scene in UIApplication.shared.connectedScenes {
             guard let ws = scene as? UIWindowScene else { continue }
-            for w in ws.windows where w.isKey { return w }
+            for w in ws.windows where w.isKeyWindow { return w }
         }
         return nil
     }
