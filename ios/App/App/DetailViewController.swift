@@ -440,6 +440,10 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                 let upload = try await API.uploadImage(jpegData: jpeg)
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = RecordViewController.nowTakenAt()
+                if let loc = await LocationOnce.fetch() {
+                    meta["latitude"] = loc.lat
+                    meta["longitude"] = loc.lng
+                }
                 _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as? String ?? "", "image_metadata": meta])
                 food?["image_path"] = upload["path"]
                 if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == id }) {

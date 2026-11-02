@@ -1,6 +1,9 @@
 import UIKit
+import CoreLocation
 
-// 记录 tab：今日记录 + 拍照/相册快速保存
+// 记录 tab：今日记录 + 拍照/相册快速保存（对齐小程序 records 页）
+// 上传元数据对齐 compressAndUpload：taken_at + latitude/longitude
+// （小程序取 gcj02 坐标，iOS 只能取 WGS84 原始定位，国内存在偏移，已知差异）
 class RecordViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     private var table: UITableView!
     private var records: [[String: Any]] = []
@@ -17,7 +20,9 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         table = UITableView(frame: .zero, style: .plain)
         table.dataSource = self
         table.delegate = self
-        table.rowHeight = 72
+        table.separatorStyle = .none
+        table.register(RecordCardCell.self, forCellReuseIdentifier: "rcard")
+        table.rowHeight = 76
         table.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(table)
         NSLayoutConstraint.activate([
@@ -75,11 +80,17 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         Toast.show("上传中…", view)
         Task {
             do {
-                // 缩放到最大 320 边 + JPEG 压缩（对齐小程序规则）
-                let jpeg = img.resized(maxDimension: 320).jpegData(compressionQuality: 0.8) ?? Data()
+                // 缩放到最大边长 + JPEG 压缩（对齐小程序 compressAndUpload 规则）
+                let maxDim = CGFloat((config?["image"] as? [String: Any])?["max_dimension"] as? Int ?? 320)
+                let quality = (config?["image"] as? [String: Any])?["quality"] as? Double ?? 0.8
+                let jpeg = img.resized(maxDimension: maxDim).jpegData(compressionQuality: quality) ?? Data()
                 let upload = try await API.uploadImage(jpegData: jpeg)
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = Self.nowTakenAt()
+                if let loc = await LocationOnce.fetch() {
+                    meta["latitude"] = loc.lat
+                    meta["longitude"] = loc.lng
+                }
                 let record: [String: Any] = [
                     "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
                     "preference": (config?["preferences"] as? [String: Any])?["good"] as? Int ?? 60,
@@ -109,8 +120,7 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
 
     // MARK: table
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        if records.isEmpty { return 1 }
-        return records.count
+        records.isEmpty ? 1 : records.count
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
@@ -118,27 +128,18 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "cell") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "cell")
         if records.isEmpty {
-            cell.textLabel?.text = "今天还没有记录"
-            cell.detailTextLabel?.text = "右上角拍照或从相册选"
+            let cell = tableView.dequeueReusableCell(withIdentifier: "rempty") ?? UITableViewCell(style: .default, reuseIdentifier: "rempty")
+            var cfg = cell.defaultContentConfiguration()
+            cfg.text = "今天还没有记录"
+            cfg.textProperties.alignment = .center
+            cell.contentConfiguration = cfg
+            cell.selectionStyle = .none
             return cell
         }
-        let rec = records[indexPath.row]
-        cell.textLabel?.text = (rec["name"] as? String) ?? "未命名"
-        let t = (rec["taken_at"] as? String) ?? (rec["create_at"] as? String) ?? ""
-        cell.detailTextLabel?.text = String(t.prefix(16)).replacingOccurrences(of: ":", with: ":", options: [], range: t.range(of: "^\\d{4}:\\d{2}:\\d{2}", options: .regularExpression))
-        cell.imageView?.image = nil
-        if let path = rec["image_path"] as? String, let url = API.imageUrl(path) {
-            let task = URLSession.shared.dataTask(with: url) { data, _, _ in
-                guard let data else { return }
-                DispatchQueue.main.async {
-                    if let img = UIImage(data: data) { cell.imageView?.image = img }
-                    tableView.reloadRows(at: [indexPath], with: .none)
-                }
-            }
-            task.resume()
-        }
+        let cell = tableView.dequeueReusableCell(withIdentifier: "rcard") as! RecordCardCell
+        cell.bind(records[indexPath.row])
+        cell.onComment = { [weak self] id in self?.openComment(id) }
         return cell
     }
 
@@ -147,6 +148,317 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         guard let id = records[indexPath.row]["id"] as? Int else { return }
         let d = DetailViewController(foodId: id)
         navigationController?.pushViewController(d, animated: true)
+    }
+
+    // MARK: 评论面板（对齐 records 页 openComment 弹层）
+
+    private func openComment(_ id: Int) {
+        guard let rec = records.first(where: { ($0["id"] as? Int) == id }) else { return }
+        let comments = rec["comment"] as? [String] ?? []
+        let panel = CommentPanelController(foodId: id, comments: comments)
+        panel.onSaved = { [weak self] in
+            self?.loadToday()
+        }
+        present(UINavigationController(rootViewController: panel), animated: true)
+    }
+}
+
+// 记录卡片：图 + 名称 + 时间 + 评论N次 + 评论按钮
+final class RecordCardCell: UITableViewCell {
+    var onComment: ((Int) -> Void)?
+    private var foodId = 0
+    private let card = UIView()
+    private let imgView = UIImageView()
+    private let nameLabel = UILabel()
+    private let timeLabel = UILabel()
+    private let commentBtn = UIButton(type: .system)
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        selectionStyle = .none
+        backgroundColor = .clear
+        card.backgroundColor = .white
+        card.layer.cornerRadius = 12
+        card.layer.masksToBounds = true
+        card.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(card)
+
+        imgView.contentMode = .scaleAspectFill
+        imgView.clipsToBounds = true
+        imgView.layer.cornerRadius = 10
+        imgView.backgroundColor = UIColor(white: 0.93, alpha: 1)
+        imgView.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(imgView)
+
+        nameLabel.font = .boldSystemFont(ofSize: 15)
+        timeLabel.font = .systemFont(ofSize: 12)
+        timeLabel.textColor = .secondaryLabel
+
+        commentBtn.setTitleColor(Theme.primary, for: .normal)
+        commentBtn.titleLabel?.font = .systemFont(ofSize: 13)
+        commentBtn.backgroundColor = Theme.primary.withAlphaComponent(0.08)
+        commentBtn.layer.cornerRadius = 12
+        commentBtn.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+        commentBtn.addAction(UIAction(handler: { [weak self] _ in
+            guard let self else { return }
+            self.onComment?(self.foodId)
+        }), for: .touchUpInside)
+
+        let info = UIStackView(arrangedSubviews: [nameLabel, timeLabel])
+        info.axis = .vertical
+        info.spacing = 4
+        info.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(info)
+        card.addSubview(commentBtn)
+
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 5),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -10),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -5),
+            imgView.widthAnchor.constraint(equalToConstant: 56),
+            imgView.heightAnchor.constraint(equalToConstant: 56),
+            imgView.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            imgView.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            info.leadingAnchor.constraint(equalTo: imgView.trailingAnchor, constant: 12),
+            info.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            commentBtn.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            commentBtn.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            commentBtn.leadingAnchor.constraint(greaterThanOrEqualTo: info.trailingAnchor, constant: 8),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func bind(_ rec: [String: Any]) {
+        foodId = rec["id"] as? Int ?? 0
+        let n = rec["name"] as? String ?? ""
+        nameLabel.text = n.isEmpty ? "未命名" : n
+        let t = (rec["taken_at"] as? String) ?? (rec["create_at"] as? String) ?? ""
+        timeLabel.text = String(t.prefix(16))
+        let comments = rec["comment"] as? [String] ?? []
+        commentBtn.setTitle("💬 \(comments.count)", for: .normal)
+        if let path = rec["image_path"] as? String {
+            ImageLoader.shared.load(API.imageUrl(path), into: imgView)
+        } else {
+            imgView.image = UIImage(systemName: "photo")
+        }
+    }
+}
+
+// 评论面板：评论列表 + 输入（🎤 语音）+ 保存（对齐 records 页评论弹层 + voice.js）
+final class CommentPanelController: UIViewController, UITableViewDataSource, VoiceReceiver {
+    var onSaved: (() -> Void)?
+    private let foodId: Int
+    private var comments: [String]
+    private let table = UITableView()
+    private let input = UITextView()
+    private let placeholder = UILabel()
+    private let voiceBtn = VoiceButton()
+    private var voiceBase = ""
+
+    init(foodId: Int, comments: [String]) {
+        self.foodId = foodId
+        self.comments = comments
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "评论"
+        view.backgroundColor = .systemBackground
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "关闭", style: .plain, target: self, action: #selector(closePanel))
+
+        table.dataSource = self
+        table.register(UITableViewCell.self, forCellReuseIdentifier: "cmt")
+        table.rowHeight = UITableView.automaticDimension
+        table.estimatedRowHeight = 40
+        table.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(table)
+
+        input.font = .systemFont(ofSize: 14)
+        input.layer.borderColor = UIColor(white: 0.85, alpha: 1).cgColor
+        input.layer.borderWidth = 1
+        input.layer.cornerRadius = 8
+        input.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(input)
+        placeholder.text = "添加评论"
+        placeholder.font = .systemFont(ofSize: 14)
+        placeholder.textColor = .placeholderText
+        placeholder.isUserInteractionEnabled = false
+        placeholder.translatesAutoresizingMaskIntoConstraints = false
+        input.addSubview(placeholder)
+        NSLayoutConstraint.activate([
+            placeholder.topAnchor.constraint(equalTo: input.topAnchor, constant: 8),
+            placeholder.leadingAnchor.constraint(equalTo: input.leadingAnchor, constant: 6),
+            input.heightAnchor.constraint(equalToConstant: 60),
+        ])
+        placeholder.isHidden = !input.text.isEmpty
+
+        voiceBtn.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            voiceBtn.widthAnchor.constraint(equalToConstant: 44),
+            voiceBtn.heightAnchor.constraint(equalToConstant: 44),
+        ])
+        voiceBtn.onStart = { [weak self] in
+            guard let self else { return }
+            self.voiceBase = self.input.text ?? ""
+            if !VoiceManager.shared.start() { Toast.show("语音功能不可用", self.view) }
+        }
+        voiceBtn.onEnd = { VoiceManager.shared.stop() }
+
+        let inputRow = UIStackView(arrangedSubviews: [input, voiceBtn])
+        inputRow.axis = .horizontal
+        inputRow.alignment = .bottom
+        inputRow.spacing = 8
+        inputRow.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(inputRow)
+
+        let save = UIButton(type: .system)
+        save.setTitle("保存评论", for: .normal)
+        save.setTitleColor(.white, for: .normal)
+        save.backgroundColor = Theme.primary
+        save.layer.cornerRadius = 10
+        save.titleLabel?.font = .boldSystemFont(ofSize: 15)
+        save.translatesAutoresizingMaskIntoConstraints = false
+        save.addTarget(self, action: #selector(saveComment), for: .touchUpInside)
+        view.addSubview(save)
+
+        NSLayoutConstraint.activate([
+            table.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            table.bottomAnchor.constraint(equalTo: inputRow.topAnchor, constant: -8),
+            inputRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            inputRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            inputRow.bottomAnchor.constraint(equalTo: save.topAnchor, constant: -8),
+            save.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            save.widthAnchor.constraint(equalToConstant: 180),
+            save.heightAnchor.constraint(equalToConstant: 44),
+            save.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12),
+        ])
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        VoiceManager.shared.ensurePermission()
+        VoiceManager.shared.attach(self)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        VoiceManager.shared.detach(self)
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        comments.isEmpty ? 1 : comments.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "cmt")!
+        if comments.isEmpty {
+            var cfg = cell.defaultContentConfiguration()
+            cfg.text = "还没有评论"
+            cfg.textProperties.alignment = .center
+            cfg.textProperties.color = .secondaryLabel
+            cell.contentConfiguration = cfg
+            return cell
+        }
+        var cfg = cell.defaultContentConfiguration()
+        cfg.text = "· " + comments[indexPath.row]
+        cfg.textProperties.numberOfLines = 0
+        cell.contentConfiguration = cfg
+        return cell
+    }
+
+    @objc private func closePanel() { dismiss(animated: true) }
+
+    @objc private func saveComment() {
+        let text = input.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { Toast.show("请输入评论", view); return }
+        let newComments = comments + [text]
+        Task {
+            do {
+                _ = try await API.addComment(foodId, comment: newComments)
+                await MainActor.run {
+                    comments = newComments
+                    input.text = ""
+                    placeholder.isHidden = false
+                    table.reloadData()
+                    Toast.show("已评论", view)
+                    onSaved?()
+                }
+            } catch {
+                await MainActor.run { Toast.show(error.localizedDescription, view) }
+            }
+        }
+    }
+
+    // MARK: VoiceReceiver（SFSpeech 结果为累计文本，拼接在基串后）
+
+    func voiceDidStart() {
+        DispatchQueue.main.async { self.voiceBtn.setRecording(true) }
+    }
+    func voiceDidRecognize(_ text: String, isFinal: Bool) {
+        DispatchQueue.main.async {
+            self.input.text = self.voiceBase + text
+            self.placeholder.isHidden = !(self.input.text?.isEmpty ?? true)
+        }
+    }
+    func voiceDidFail(_ msg: String) {
+        DispatchQueue.main.async {
+            self.voiceBtn.setRecording(false)
+            Toast.show(msg, self.view)
+        }
+    }
+}
+
+// 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）
+final class LocationOnce: NSObject, CLLocationManagerDelegate {
+    struct Result { let lat: Double; let lng: Double }
+    private let manager = CLLocationManager()
+    private var cont: CheckedContinuation<Result?, Never>?
+    private static var current: LocationOnce?
+
+    static func fetch() async -> Result? {
+        guard CLLocationManager.locationServicesEnabled() else { return nil }
+        let mgr = CLLocationManager()
+        let status = mgr.authorizationStatus
+        if status == .notDetermined {
+            mgr.requestWhenInUseAuthorization()
+            for _ in 0..<30 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if mgr.authorizationStatus != .notDetermined { break }
+            }
+        }
+        let s = mgr.authorizationStatus
+        guard s == .authorizedWhenInUse || s == .authorizedAlways else { return nil }
+        return await withCheckedContinuation { (c: CheckedContinuation<Result?, Never>) in
+            let h = LocationOnce()
+            h.cont = c
+            LocationOnce.current = h // 保活到回调
+            h.manager.delegate = h
+            h.manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            h.manager.requestLocation()
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let c = cont else { return }
+        cont = nil
+        if let l = locations.last {
+            c.resume(returning: Result(lat: l.coordinate.latitude, lng: l.coordinate.longitude))
+        } else {
+            c.resume(returning: nil)
+        }
+        LocationOnce.current = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard let c = cont else { return }
+        cont = nil
+        c.resume(returning: nil)
+        LocationOnce.current = nil
     }
 }
 
