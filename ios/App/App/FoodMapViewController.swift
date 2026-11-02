@@ -334,8 +334,9 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     func smokeSwitchEurope() { switchRegion("europe") }
 
     func smokeOpenRank() {
-        guard let first = dishList.first(where: { $0.visited }) else { return }
-        openCatModal(name: first.name, visited: true)
+        // dishList 只有点省后才填，初始为空；直接用已解锁类目集合
+        guard let first = visitedDishes.sorted().first else { return }
+        openCatModal(name: first, visited: true)
     }
 
     private func switchRegion(_ r: String) {

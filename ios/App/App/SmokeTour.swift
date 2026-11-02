@@ -17,23 +17,24 @@ enum SmokeTour {
         let nav0 = tab.viewControllers?[0] as? UINavigationController
 
         // 时间串联：历史 → 详情 → 记录 → 地图(中国/欧洲/排行榜) → 轨迹 → 设置
+        // 等待给足：后端首请求 + 地图渲染要数秒（run 35 实测 2.5s 截图时请求未回）
         at(2.0) { tab.selectedIndex = 0 }                                       // 历史
-        at(2.5) {
+        at(10.0) {
             snap("01-history")
             (nav0?.topViewController as? HistoryViewController)?.smokeOpenFirst()
         }
-        at(3.0) {
+        at(11.0) {
             snap("02-detail")
             nav0?.popToRootViewController(animated: false)
         }
         at(1.0) { tab.selectedIndex = 1 }                                       // 记录
         at(2.0) { snap("03-record") }
         at(0.5) { tab.selectedIndex = 2 }                                       // 地图
-        at(3.5) {
+        at(9.0) {
             snap("04-map-china")
             mapVC()?.smokeSwitchEurope()
         }
-        at(2.0) {
+        at(5.0) {
             snap("05-map-europe")
             mapVC()?.smokeOpenRank()
         }
