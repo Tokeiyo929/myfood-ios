@@ -37,9 +37,9 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
         table.estimatedRowHeight = 110
         table.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(table)
-        let refresh = UIRefreshControl()
-        refresh.addTarget(self, action: #selector(refresh), for: .valueChanged)
-        table.refreshControl = refresh
+        let rc = UIRefreshControl()
+        rc.addTarget(self, action: #selector(refresh), for: .valueChanged)
+        table.refreshControl = rc
 
         backTop.setTitle("↑ 顶部", for: .normal)
         backTop.backgroundColor = Theme.primary
