@@ -89,7 +89,7 @@ final class OcrViewController: UIViewController, UICollectionViewDataSource, UIC
             guard let self else { return }
             self.applyBuilt()
             Toast.show("已填入", self.view)
-        ), for: .touchUpInside)
+        }), for: .touchUpInside)
         clearBtn.setTitle("清空", for: .normal)
         clearBtn.setTitleColor(.systemRed, for: .normal)
         clearBtn.titleLabel?.font = .systemFont(ofSize: 13)
@@ -101,7 +101,7 @@ final class OcrViewController: UIViewController, UICollectionViewDataSource, UIC
             guard let self else { return }
             self.resetPicked()
             Toast.show("已清空", self.view)
-        ), for: .touchUpInside)
+        }), for: .touchUpInside)
         let actionsRow = UIStackView(arrangedSubviews: [spacer(), addBtn, clearBtn])
         actionsRow.axis = .horizontal
         actionsRow.spacing = 8

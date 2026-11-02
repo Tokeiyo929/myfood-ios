@@ -7,7 +7,7 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         delegate = self
         let history = HistoryViewController()
         let record = RecordViewController()
-        let map = MapViewController()
+        let map = FoodMapViewController()   // 美食地图（对齐小程序 map-package）
         let tracks = TrackDaysViewController()
         let settings = SettingsViewController()
         history.tabBarItem = UITabBarItem(title: "历史", image: UIImage(systemName: "clock"), tag: 0)
