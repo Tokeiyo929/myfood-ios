@@ -6,6 +6,9 @@ enum SmokeTour {
     static let enabled = ProcessInfo.processInfo.arguments.contains("-autoSmoke")
     private static var started = false
 
+    // 无条件诊断（viewDidAppear 触发一次，记录实际收到的参数）
+    static func debugNote(_ line: String) { log(line) }
+
     static func start() {
         guard enabled, !started else { return }
         started = true

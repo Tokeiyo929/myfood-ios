@@ -82,7 +82,7 @@ jobs:
             xcrun simctl launch "$UDID" com.tokeiyo929.myfood -autoSmoke 2>&1 || echo "LAUNCH FAILED"
             echo "== after 10s process check =="
             sleep 10
-            xcrun simctl spawn "$UDID" launchctl list 2>&1 | grep -i myfood || echo "PROCESS NOT RUNNING"
+            xcrun simctl spawn "$UDID" ps ax 2>&1 | grep "\.app/App" || echo "PROCESS NOT RUNNING (ps)"
             echo "== crash reports =="
             mkdir -p crashlogs
             cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"

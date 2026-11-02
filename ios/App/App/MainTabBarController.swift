@@ -22,6 +22,7 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        SmokeTour.debugNote("vda args=\(ProcessInfo.processInfo.arguments)") // 诊断
         SmokeTour.start() // CI 冒烟巡访（仅 -autoSmoke 时生效，内部有防重入）
     }
 
