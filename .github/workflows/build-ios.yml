@@ -62,7 +62,7 @@ jobs:
           set -o pipefail
           if xcodebuild -project App.xcodeproj -scheme App \
             -configuration Debug -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" 2>&1 | tee build-sim.log | tail -40; then
+            -derivedDataPath build 2>&1 | tee build-sim.log | tail -40; then
             echo "BUILD_OK"
           else
             grep -E "error:" build-sim.log | sort -u | head -40 | while IFS= read -r line; do
@@ -80,9 +80,13 @@ jobs:
           {
             echo "== launch =="
             xcrun simctl launch "$UDID" com.tokeiyo929.myfood -autoSmoke 2>&1 || echo "LAUNCH FAILED"
-            echo "== after 10s process check =="
-            sleep 10
-            xcrun simctl spawn "$UDID" ps ax 2>&1 | grep "\.app/App" || echo "PROCESS NOT RUNNING (ps)"
+            echo "== process checks (2s/5s/10s) =="
+            sleep 2
+            xcrun simctl spawn "$UDID" ps ax 2>&1 | grep "\.app/App" || echo "DEAD AT 2s"
+            sleep 3
+            xcrun simctl spawn "$UDID" ps ax 2>&1 | grep "\.app/App" || echo "DEAD AT 5s"
+            sleep 5
+            xcrun simctl spawn "$UDID" ps ax 2>&1 | grep "\.app/App" || echo "DEAD AT 10s"
             echo "== crash reports =="
             mkdir -p crashlogs
             cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"
