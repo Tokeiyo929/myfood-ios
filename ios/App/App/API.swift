@@ -1,6 +1,6 @@
 import Foundation
 
-let BASE_URL = "https://myfood-worker.keiyokaze.workers.dev"
+let BASE_URL = "https://myfood.tuqingyu.xyz"
 
 struct APIError: Error { let message: String }
 

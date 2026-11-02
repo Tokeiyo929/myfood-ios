@@ -23,5 +23,5 @@ MyFood 的 iOS 端：原生壳（Capacitor）+ 内置网页（www/），复用 m
 - 注意：`ios/App/App/public/` 是 www 的拷贝，以 www/ 为准
 
 ## 注意
-- 拍摄时间用上传时刻；后端 workers.dev 需手机开 Clash
+- 拍摄时间用上传时刻；后端已换自定义域名 myfood.tuqingyu.xyz，国内直连
 - iOS 上照片选择用 WKWebView file input（iOS 自动把 HEIC 转 JPEG）
