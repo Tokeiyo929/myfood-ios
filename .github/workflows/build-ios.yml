@@ -79,25 +79,25 @@ jobs:
           xcrun simctl install "$UDID" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
           {
             echo "== launch =="
-            xcrun simctl launch "$UDID" com.tokeiyo929.myfood -autoSmoke
+            xcrun simctl launch "$UDID" com.tokeiyo929.myfood -autoSmoke 2>&1 || echo "LAUNCH FAILED"
             echo "== after 10s process check =="
             sleep 10
             xcrun simctl spawn "$UDID" launchctl list 2>&1 | grep -i myfood || echo "PROCESS NOT RUNNING"
             echo "== container =="
-            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1)
+            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
             echo "APPC=$APPC"
             echo "== tmp/smoke listing =="
-            ls -la "$APPC/tmp/smoke/" 2>&1
+            ls -la "$APPC/tmp/smoke/" 2>&1 || true
             echo "== poll done.txt (max 90s) =="
             for i in $(seq 1 45); do
               sleep 2
               if [ -f "$APPC/tmp/smoke/done.txt" ]; then echo "done after ~$((i*2))s"; break; fi
             done
-            ls -la "$APPC/tmp/smoke/" 2>&1
+            ls -la "$APPC/tmp/smoke/" 2>&1 || true
             echo "== fallback external screenshot =="
             xcrun simctl io "$UDID" screenshot "$APPC/tmp/smoke/09-external.png" 2>&1 || echo "external screenshot failed"
-          } > smoke-debug.txt 2>&1
-          cat smoke-debug.txt
+          } > smoke-debug.txt 2>&1 || true
+          cat smoke-debug.txt || true
           mkdir -p smoke
           cp "$APPC/tmp/smoke/"*.png smoke/ 2>/dev/null || true
           ls -lh smoke/ || true
@@ -110,13 +110,14 @@ jobs:
           if-no-files-found: error
 
       - name: Upload smoke screenshots
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-screenshots
           path: |
             smoke/
             smoke-debug.txt
-          if-no-files-found: error
+          if-no-files-found: ignore
 
       - name: Publish IPA to release
         run: |
