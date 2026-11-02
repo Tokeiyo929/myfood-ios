@@ -129,6 +129,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         dishStack.spacing = 6
         dishStack.translatesAutoresizingMaskIntoConstraints = false
         dishScroll.addSubview(dishStack)
+        dishPanel.addSubview(dishScroll) // 先入层级再激活约束（否则无共同祖先崩溃）
         NSLayoutConstraint.activate([
             dishScroll.topAnchor.constraint(equalTo: dishStack.topAnchor),
             dishScroll.leadingAnchor.constraint(equalTo: dishStack.leadingAnchor),
@@ -138,7 +139,6 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
             dishScroll.heightAnchor.constraint(equalToConstant: 180),
         ])
         dishPanel.addSubview(dishTitleLabel)
-        dishPanel.addSubview(dishScroll)
         NSLayoutConstraint.activate([
             dishTitleLabel.topAnchor.constraint(equalTo: dishPanel.topAnchor, constant: 10),
             dishTitleLabel.leadingAnchor.constraint(equalTo: dishPanel.leadingAnchor, constant: 12),
