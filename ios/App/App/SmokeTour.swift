@@ -105,11 +105,9 @@ enum SmokeTour {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let f = dir.appendingPathComponent("smoke-log.txt")
         if let h = try? String(contentsOf: f, encoding: .utf8) {
-            try? (h + line + "
-").write(to: f, atomically: true, encoding: .utf8)
+            try? (h + line + "\n").write(to: f, atomically: true, encoding: .utf8)
         } else {
-            try? (line + "
-").write(to: f, atomically: true, encoding: .utf8)
+            try? (line + "\n").write(to: f, atomically: true, encoding: .utf8)
         }
     }
 }
