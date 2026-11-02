@@ -3,7 +3,7 @@ import UIKit
 // 详情页（对齐小程序 detail 页）：
 // 图片横条（今日记录，点选切换/长按换图）+ 基本信息编辑 + 味道轮盘 + 偏好条
 // + 评论（增删改）+ 原料（搜索+含量+chips）+ 保存/删除
-class DetailViewController: UIViewController, UITextFieldDelegate {
+class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDelegate {
     private var foodId: Int
     private var food: [String: Any]?
     private var stripRecords: [[String: Any]] = []   // 横条数据（今日记录）
@@ -44,6 +44,8 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
     private var commentStack: UIStackView!
     private var commentInput: UITextView!
     private var commentPlaceholder = UILabel()
+    private var voiceBtn: VoiceButton!
+    private var voiceBase = ""
 
     init(foodId: Int) {
         self.foodId = foodId
@@ -79,6 +81,17 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
         ])
         buildUI()
         Task { await loadAll() }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        VoiceManager.shared.ensurePermission()
+        VoiceManager.shared.attach(self)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        VoiceManager.shared.detach(self)
     }
 
     // MARK: - 构建 UI
@@ -185,8 +198,24 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
         commentSave.translatesAutoresizingMaskIntoConstraints = false
         commentSave.heightAnchor.constraint(equalToConstant: 36).isActive = true
         commentSave.addTarget(self, action: #selector(saveDetail), for: .touchUpInside)
+        voiceBtn = VoiceButton()
+        voiceBtn.onStart = { [weak self] in
+            guard let self else { return }
+            voiceBase = commentInput.text ?? ""
+            if !VoiceManager.shared.start() { Toast.show("语音功能不可用", view) }
+        }
+        voiceBtn.onEnd = { [weak self] in
+            self?.voiceBtn.setRecording(false)
+            VoiceManager.shared.stop()
+        }
+        voiceBtn.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        voiceBtn.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        let commentRow = UIStackView(arrangedSubviews: [commentInput, voiceBtn])
+        commentRow.axis = .horizontal
+        commentRow.spacing = 8
+        commentRow.alignment = .bottom
         commentSection.addArrangedSubview(commentStack)
-        commentSection.addArrangedSubview(commentInput)
+        commentSection.addArrangedSubview(commentRow)
         commentSection.addArrangedSubview(commentSave)
         stack.addArrangedSubview(commentSection)
 
@@ -485,7 +514,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
             let del = UIButton(type: .system)
             del.setTitle("删除", for: .normal)
             del.setTitleColor(.systemRed, for: .normal)
-            del.font = .systemFont(ofSize: 13)
+            del.titleLabel?.font = .systemFont(ofSize: 13)
             del.tag = idx
             del.addTarget(self, action: #selector(deleteComment(_:)), for: .touchUpInside)
             lb.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -518,6 +547,12 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
             self.renderComments()
         })
         present(alert, animated: true)
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        if textView === commentInput {
+            commentPlaceholder.isHidden = !(textView.text?.isEmpty ?? true)
+        }
     }
 
     // MARK: - 偏好 / 值不值得 / 味道
@@ -659,6 +694,17 @@ class DetailViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func spacer() -> UIView { UIView() }
+
+    private func worthBtn(_ title: String, tag: Int) -> UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.titleLabel?.font = .boldSystemFont(ofSize: 14)
+        b.tag = tag
+        b.layer.cornerRadius = 8
+        b.contentEdgeInsets = UIEdgeInsets(top: 6, left: 14, bottom: 6, right: 14)
+        b.addTarget(self, action: #selector(worthTapped(_:)), for: .touchUpInside)
+        return b
+    }
 
     private func chipsStack() -> UIStackView {
         let s = UIStackView()
@@ -987,6 +1033,26 @@ class PreferenceTrack: UIView {
         let minL = options.first!.level
         let maxL = options.last!.level
         onLevel?(Int(round(CGFloat(minL) + ratio * CGFloat(maxL - minL))))
+    }
+}
+
+// MARK: - 语音输入
+
+extension DetailViewController: VoiceReceiver {
+    func voiceDidStart() {
+        DispatchQueue.main.async { self.voiceBtn.setRecording(true) }
+    }
+    func voiceDidRecognize(_ text: String, isFinal: Bool) {
+        DispatchQueue.main.async {
+            self.commentInput.text = self.voiceBase + text
+            self.commentPlaceholder.isHidden = !(self.commentInput.text?.isEmpty ?? true)
+        }
+    }
+    func voiceDidFail(_ msg: String) {
+        DispatchQueue.main.async {
+            self.voiceBtn.setRecording(false)
+            Toast.show(msg, self.view)
+        }
     }
 }
 

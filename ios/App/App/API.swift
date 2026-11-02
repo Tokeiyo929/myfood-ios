@@ -62,6 +62,8 @@ enum API {
         return try await request("/api/foods?\(qs)")
     }
     static func getFoodById(_ id: Int) async throws -> [String: Any] { try await request("/api/foods/\(id)") }
+    static func getCategories() async throws -> [String: Any] { try await request("/api/categories") }
+    static func addIngredient(_ name: String) async throws -> [String: Any] { try await request("/api/ingredients", method: "POST", body: ["name": name]) }
     static func submitFood(_ record: [String: Any]) async throws -> [String: Any] { try await request("/api/foods", method: "POST", body: record) }
     static func updateFoodDetails(_ id: Int, fields: [String: Any]) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "PATCH", body: ["fields": fields]) }
     static func addComment(_ id: Int, comment: [String]) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "PATCH", body: ["comment": comment]) }
