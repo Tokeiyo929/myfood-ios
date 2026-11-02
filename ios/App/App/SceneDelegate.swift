@@ -10,5 +10,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         root.loadViewIfNeeded()
         window?.rootViewController = root
         window?.makeKeyAndVisible()
+        SmokeTour.start() // CI 冒烟巡访（仅 -autoSmoke 时生效）
     }
 }

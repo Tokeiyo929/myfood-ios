@@ -330,6 +330,14 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     @objc private func switchChina() { switchRegion("china") }
     @objc private func switchEurope() { switchRegion("europe") }
 
+    // SmokeTour 用：切到欧洲 / 打开一个已解锁类目的排行榜
+    func smokeSwitchEurope() { switchRegion("europe") }
+
+    func smokeOpenRank() {
+        guard let first = dishList.first(where: { $0.visited }) else { return }
+        openCatModal(name: first.name, visited: true)
+    }
+
     private func switchRegion(_ r: String) {
         guard r != region else { return }
         region = r

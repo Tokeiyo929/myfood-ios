@@ -155,6 +155,11 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
         let d = DetailViewController(foodId: records[indexPath.row].id)
         navigationController?.pushViewController(d, animated: true)
     }
+
+    // SmokeTour 用：打开第一条记录
+    func smokeOpenFirst() {
+        tableView(table, didSelectRowAt: IndexPath(row: 0, section: 0))
+    }
 }
 
 // 记录卡片：图 + 名称/品牌 + 味道标签 + 材料标签 + 复购（对齐小程序 record-card）
