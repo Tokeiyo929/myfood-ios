@@ -85,7 +85,6 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        VoiceManager.shared.ensurePermission()
         VoiceManager.shared.attach(self)
     }
 

@@ -341,7 +341,6 @@ final class CommentPanelController: UIViewController, UITableViewDataSource, Voi
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        VoiceManager.shared.ensurePermission()
         VoiceManager.shared.attach(self)
     }
 

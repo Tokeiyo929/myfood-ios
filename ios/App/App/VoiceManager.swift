@@ -20,7 +20,6 @@ final class VoiceManager: NSObject, SFSpeechRecognizerDelegate {
     private var current: VoiceReceiver?
     private var recognitionTask: SFSpeechRecognitionTask?
     private(set) var isRecording = false
-    private var permissionAsked = false
 
     private override init() {
         super.init()
@@ -31,12 +30,21 @@ final class VoiceManager: NSObject, SFSpeechRecognizerDelegate {
         recognizer != nil && recognizer?.isAvailable == true
     }
 
-    // 提前申请权限（页面 onLoad 时调用，把弹窗移出"按下"的临界路径）
-    func ensurePermission() {
-        guard !permissionAsked else { return }
-        permissionAsked = true
-        SFSpeechRecognizer.requestAuthorization { _ in }
-        AVAudioSession.sharedInstance().requestRecordPermission { _ in }
+    // 权限按需请求：首次按下说话时才弹系统授权窗（启动即请求会挂系统弹窗污染截图）
+    // 未授权时本次返回 false 只触发弹窗，用户授权后第二次按下即正常录音
+    private func ensurePermission() -> Bool {
+        let speech = SFSpeechRecognizer.authorizationStatus()
+        if speech == .notDetermined {
+            SFSpeechRecognizer.requestAuthorization { _ in }
+            return false
+        }
+        guard speech == .authorized else { return false }
+        let mic = AVAudioSession.sharedInstance().recordPermission
+        if mic == .undetermined {
+            AVAudioSession.sharedInstance().requestRecordPermission { _ in }
+            return false
+        }
+        return mic == .granted
     }
 
     func attach(_ receiver: VoiceReceiver) { current = receiver }
@@ -47,6 +55,7 @@ final class VoiceManager: NSObject, SFSpeechRecognizerDelegate {
 
     func start() -> Bool {
         guard isAvailable, !isRecording else { return false }
+        guard ensurePermission() else { return false }
         // 停掉残留会话
         request?.endAudio()
         recognitionTask?.cancel()
