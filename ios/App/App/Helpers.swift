@@ -37,7 +37,7 @@ final class AppConfig {
     let raw: [String: Any]
     let flavorScale: [String: Int]        // min/default/max/low/mid/high threshold
     let flavors: [String]
-    let preferences: [(value: Int, label: String, face: String, level: Int)] // 按 level 升序
+    let preferences: [(value: String, label: String, face: String, level: Int)] // 按 level 升序
     let pageSize: Int
     let maxPageSize: Int
     let imageMaxDimension: Int
@@ -55,11 +55,11 @@ final class AppConfig {
             "high": scale["high_threshold"] as? Int ?? 4,
         ]
         flavors = raw["flavors"] as? [String] ?? []
-        var prefs: [(Int, String, String, Int)] = []
+        var prefs: [(String, String, String, Int)] = []
         if let p = raw["preferences"] as? [String: Any] {
             for (_, v) in p {
                 guard let pv = v as? [String: Any],
-                      let value = pv["value"] as? Int,
+                      let value = pv["value"] as? String,
                       let level = pv["level"] as? Int else { continue }
                 prefs.append((value, pv["label"] as? String ?? "", pv["face"] as? String ?? "", level))
             }
@@ -93,7 +93,7 @@ final class AppConfig {
     static func decorate(_ record: [String: Any]) -> DecoratedRecord {
         let c = shared
         var d = DecoratedRecord(record: record)
-        if let pref = record["preference"] as? Int, let cfg = c,
+        if let pref = record["preference"] as? String, let cfg = c,
            let excellent = cfg.preferences.last, let bad = cfg.preferences.first {
             if pref == excellent.value { d.prefKind = .excellent }
             else if pref == bad.value { d.prefKind = .bad }

@@ -93,7 +93,7 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
                 }
                 let record: [String: Any] = [
                     "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
-                    "preference": (config?["preferences"] as? [String: Any])?["good"] as? Int ?? 60,
+                    "preference": ((config?["preferences"] as? [String: Any])?["good"] as? [String: Any])?["value"] as? String ?? "偏好吃",
                     "comment": [],
                     "image_path": upload["path"] as? String ?? "",
                     "image_metadata": meta,

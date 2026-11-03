@@ -327,7 +327,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
             wheelView.onLevelChange = { [weak self] name, level in
                 self?.flavorLevels[name] = level
             }
-            let prefVal = f["preference"] as? Int
+            let prefVal = f["preference"] as? String
             currentPref = c.preferences.first { $0.value == prefVal } ?? c.preferences.first
             prefTrack.configure(options: c.preferences, selected: currentPref)
         }
@@ -685,7 +685,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
             "categories": selectedCategory.isEmpty ? [] : [selectedCategory],
             "ingredients": ingredients,
             "flavors": flavors,
-            "preference": currentPref?.value ?? (f["preference"] as? Int ?? 60),
+            "preference": currentPref?.value ?? (f["preference"] as? String ?? "偏好吃"),
             "worth_it": worthIt == "" ? NSNull() : NSNumber(value: worthIt == "yes"),
             "comment": comments,
         ]
@@ -1013,8 +1013,8 @@ class FlavorWheelView: UIView {
 // MARK: - 偏好竖条（拖动选偏好）
 
 class PreferenceTrack: UIView {
-    private var options: [(value: Int, label: String, face: String, level: Int)] = []
-    private var selected: (value: Int, label: String, face: String, level: Int)?
+    private var options: [(value: String, label: String, face: String, level: Int)] = []
+    private var selected: (value: String, label: String, face: String, level: Int)?
     var onLevel: ((Int) -> Void)?
     private let fillView = UIView()
     private let thumbView = UIView()
@@ -1055,13 +1055,13 @@ class PreferenceTrack: UIView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    func configure(options: [(value: Int, label: String, face: String, level: Int)], selected: (value: Int, label: String, face: String, level: Int)?) {
+    func configure(options: [(value: String, label: String, face: String, level: Int)], selected: (value: String, label: String, face: String, level: Int)?) {
         self.options = options
         self.selected = selected
         layoutForSelection()
     }
 
-    func updateSelected(_ p: (value: Int, label: String, face: String, level: Int)) {
+    func updateSelected(_ p: (value: String, label: String, face: String, level: Int)) {
         selected = p
         layoutForSelection()
     }

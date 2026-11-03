@@ -2,7 +2,7 @@ import Foundation
 
 let BASE_URL = "https://myfood.tuqingyu.xyz"
 
-struct APIError: Error { let message: String }
+struct APIError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
 enum API {
     static func imageUrl(_ path: String?) -> URL? {
