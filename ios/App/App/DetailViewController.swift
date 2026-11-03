@@ -15,7 +15,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     private var editingCommentIndex: Int?
     private var selectedCategory = ""
     private var worthIt = ""            // "" / "yes" / "no"
-    private var currentPref: (value: Int, label: String, face: String, level: Int)?
+    private var currentPref: (value: String, label: String, face: String, level: Int)?
     private var allCategories: [String] = []
     private var currentRepurchase = 0
 
