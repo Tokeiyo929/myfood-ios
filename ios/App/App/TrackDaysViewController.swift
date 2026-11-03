@@ -1,6 +1,6 @@
 import UIKit
 
-// 轨迹 tab：按天列表
+// 轨迹 tab 二级页：每日记录列表（根页是 MapViewController 地图）
 class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private var table: UITableView!
     private var days: [[String: Any]] = []
@@ -12,8 +12,7 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "轨迹"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "记录", style: .plain, target: self, action: #selector(openRecorder))
+        title = "每日记录"
         table = UITableView(frame: .zero, style: .plain)
         table.dataSource = self
         table.delegate = self
@@ -49,7 +48,7 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
         let cell = tableView.dequeueReusableCell(withIdentifier: "dcell") ?? UITableViewCell(style: .value1, reuseIdentifier: "dcell")
         if days.isEmpty {
             cell.textLabel?.text = "还没有轨迹记录"
-            cell.detailTextLabel?.text = "点右上「记录」开始"
+            cell.detailTextLabel?.text = "回上一页点「开始记录」"
             return cell
         }
         let d = days[indexPath.row]
@@ -65,9 +64,5 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
         let vc = MapViewController()
         vc.viewDay = day
         navigationController?.pushViewController(vc, animated: true)
-    }
-
-    @objc private func openRecorder() {
-        navigationController?.pushViewController(MapViewController(), animated: true) // 实时记录模式
     }
 }

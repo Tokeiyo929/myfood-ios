@@ -16,9 +16,13 @@ class MapViewController: UIViewController, MKMapViewDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = viewDay.map { "轨迹 · \($0)" } ?? "地图"
+        title = viewDay.map { "轨迹 · \($0)" } ?? "轨迹"
         buildUI()
         loadTrack()
+        // 轨迹 tab 根页：右上角进每日记录列表（二级页）；按天进入的历史页不重复加
+        if viewDay == nil {
+            navigationItem.rightBarButtonItem = UIBarButtonItem(title: "每日记录", style: .plain, target: self, action: #selector(openDayList))
+        }
         TrackRecorder.shared.onNewPoint = { [weak self] lat, lng in
             DispatchQueue.main.async {
                 guard let self, self.viewDay == nil else { return }
@@ -26,6 +30,10 @@ class MapViewController: UIViewController, MKMapViewDelegate {
                 self.statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
             }
         }
+    }
+
+    @objc private func openDayList() {
+        navigationController?.pushViewController(TrackDaysViewController(), animated: true)
     }
 
     private func buildUI() {

@@ -281,7 +281,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         let features = loadFeatures(region)
         guard !features.isEmpty else { statusLabel.text = "地图数据缺失"; return }
 
-        // fit 视窗：equirectangular 投影，zoom=1 即铺满（对齐 echarts zoom=1）
+        // bbox
         var minLon = Double.greatestFiniteMagnitude, maxLon = -Double.greatestFiniteMagnitude
         var minLat = Double.greatestFiniteMagnitude, maxLat = -Double.greatestFiniteMagnitude
         for f in features { for ring in f.rings { for p in ring {
@@ -290,11 +290,13 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         } } }
         let vw = scrollView.bounds.width, vh = scrollView.bounds.height
         guard maxLon > minLon, maxLat > minLat, vw > 0, vh > 0 else { return }
-        let k = min(vw / (maxLon - minLon), vh / (maxLat - minLat))
+
+        // equirectangular 投影 + cos(中纬度) 经度校正（否则中国/欧洲横向被拉伸）
+        // 可测：projectParams / projectPoint 为纯函数
+        let params = Self.projectParams(vw: vw, vh: vh, minLon: minLon, maxLon: maxLon, minLat: minLat, maxLat: maxLat)
 
         func project(_ lonlat: CGPoint) -> CGPoint {
-            CGPoint(x: (Double(lonlat.x) - minLon) * k,
-                    y: (maxLat - Double(lonlat.y)) * k)
+            Self.projectPoint(lonlat, params: params)
         }
 
         let isEurope = region == "europe"
@@ -323,6 +325,23 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         // contentView 尺寸 = 视口（zoom=1 铺满，与 echarts 一致）
         scrollView.contentSize = CGSize(width: vw, height: vh)
         contentView.frame = CGRect(x: 0, y: 0, width: vw, height: vh)
+    }
+
+    // 投影参数（纯函数，便于自测）：经度先乘 cos(midLat) 再 fit 视窗，图形居中
+    static func projectParams(vw: CGFloat, vh: CGFloat, minLon: Double, maxLon: Double, minLat: Double, maxLat: Double) -> (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double) {
+        let midLat = (minLat + maxLat) / 2
+        let cosLat = cos(midLat * .pi / 180)
+        let dLon = (maxLon - minLon) * cosLat
+        let dLat = maxLat - minLat
+        let k = min(Double(vw) / dLon, Double(vh) / dLat)
+        let offsetX = (Double(vw) - dLon * k) / 2
+        let offsetY = (Double(vh) - dLat * k) / 2
+        return (k, offsetX, offsetY, minLon, maxLat, cosLat)
+    }
+
+    static func projectPoint(_ lonlat: CGPoint, params: (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double)) -> CGPoint {
+        CGPoint(x: (Double(lonlat.x) - params.minLon) * params.cosLat * params.k + params.offsetX,
+                y: (params.maxLat - Double(lonlat.y)) * params.k + params.offsetY)
     }
 
     // MARK: - 交互

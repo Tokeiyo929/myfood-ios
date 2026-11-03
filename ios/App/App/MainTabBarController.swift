@@ -8,7 +8,7 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         let history = HistoryViewController()
         let record = RecordViewController()
         let map = FoodMapViewController()   // 美食地图（对齐小程序 map-package）
-        let tracks = TrackDaysViewController()
+        let tracks = MapViewController()    // 轨迹 tab：地图为主（每日记录为二级页）
         let settings = SettingsViewController()
         history.tabBarItem = UITabBarItem(title: "历史", image: UIImage(systemName: "clock"), tag: 0)
         record.tabBarItem = UITabBarItem(title: "记录", image: UIImage(systemName: "camera"), tag: 1)
@@ -24,6 +24,7 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         super.viewDidAppear(animated)
         SmokeTour.debugNote("vda args=\(ProcessInfo.processInfo.arguments)") // 诊断
         SmokeTour.start() // CI 冒烟巡访（仅 -autoSmoke 时生效，内部有防重入）
+        AutoTest.start() // CI 自测（仅 -autoTest 时生效，内部有防重入）
     }
 
     override func viewDidLayoutSubviews() {

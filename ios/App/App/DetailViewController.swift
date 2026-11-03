@@ -3,7 +3,7 @@ import UIKit
 // 详情页（对齐小程序 detail 页）：
 // 图片横条（今日记录，点选切换/长按换图）+ 基本信息编辑 + 味道轮盘 + 偏好条
 // + 评论（增删改）+ 原料（搜索+含量+chips）+ 保存/删除
-class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDelegate {
+class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDelegate, UIScrollViewDelegate {
     private var foodId: Int
     private var food: [String: Any]?
     private var stripRecords: [[String: Any]] = []   // 横条数据（今日记录）
@@ -63,6 +63,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         view.backgroundColor = .systemBackground
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.keyboardDismissMode = .onDrag
+        scrollView.delegate = self // touchesShouldCancel：轮盘/滑条触摸不滚动页面
         view.addSubview(scrollView)
         stack.axis = .vertical
         stack.spacing = 14
@@ -336,9 +337,32 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     }
 
     private func worthStr(_ v: Any?) -> String {
+        Self.parseWorth(v)
+    }
+
+    // 可测：worker 存的是 "yes"/"no" 字符串，兼容历史 bool/NSNumber
+    static func parseWorth(_ v: Any?) -> String {
+        if let s = v as? String { return s == "yes" || s == "true" ? "yes" : s == "no" || s == "false" ? "no" : "" }
         if let b = v as? Bool { return b ? "yes" : "no" }
         if let n = v as? NSNumber { return n.boolValue ? "yes" : "no" }
         return ""
+    }
+
+    // MARK: - 手势：轮盘/偏好滑条自己消费拖动，页面不跟滚
+
+    // 可测：返回 true = 该视图自己接管触摸，scrollView 不取消（不滚动）
+    static func gestureOwnsTouch(_ v: UIView?) -> Bool {
+        var cur: UIView? = v
+        while let w = cur {
+            if w is FlavorWheelView || w is PreferenceTrack { return true }
+            cur = w.superview
+        }
+        return false
+    }
+
+    // UIScrollViewDelegate：触摸落在轮盘/滑条上时不取消其触摸（页面不滚）
+    func touchesShouldCancel(to cancel: UIView) -> Bool {
+        !Self.gestureOwnsTouch(cancel)
     }
 
     static func prevRecordLabel(_ modifyAt: [String]?) -> String {

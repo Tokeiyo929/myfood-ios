@@ -22,6 +22,7 @@
 		AA00000D00000000000000AAB /* FoodMapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D00000000000000AAA /* FoodMapViewController.swift */; };
 		AA00000E00000000000000AAB /* RankModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E00000000000000AAA /* RankModalView.swift */; };
 		AA00001100000000000000AAB /* SmokeTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001100000000000000AAA /* SmokeTour.swift */; };
+		AA00001200000000000000AAB /* AutoTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001200000000000000AAA /* AutoTest.swift */; };
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -46,6 +47,7 @@
 		AA00000D00000000000000AAA /* FoodMapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodMapViewController.swift; sourceTree = "<group>"; };
 		AA00000E00000000000000AAA /* RankModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankModalView.swift; sourceTree = "<group>"; };
 		AA00001100000000000000AAA /* SmokeTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTour.swift; sourceTree = "<group>"; };
+		AA00001200000000000000AAA /* AutoTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTest.swift; sourceTree = "<group>"; };
 		AA00000F00000000000000AAA /* china.geojson.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = china.geojson.json; sourceTree = "<group>"; };
 		AA00001000000000000000AAA /* europe.geojson.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = europe.geojson.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -108,6 +110,7 @@
 				AA00000D00000000000000AAA /* FoodMapViewController.swift */,
 				AA00000E00000000000000AAA /* RankModalView.swift */,
 			AA00001100000000000000AAA /* SmokeTour.swift */,
+				AA00001200000000000000AAA /* AutoTest.swift */,
 				AA00000F00000000000000AAA /* china.geojson.json */,
 				AA00001000000000000000AAA /* europe.geojson.json */,
 			);
@@ -204,6 +207,7 @@
 				AA00000D00000000000000AAB /* FoodMapViewController.swift in Sources */,
 				AA00000E00000000000000AAB /* RankModalView.swift in Sources */,
 			AA00001100000000000000AAB /* SmokeTour.swift in Sources */,
+			AA00001200000000000000AAB /* AutoTest.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
