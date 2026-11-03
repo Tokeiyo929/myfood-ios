@@ -42,7 +42,7 @@ enum AutoTest {
             "pagination": ["page_size": 10, "max_page_size": 100],
         ]
         let cfg = AppConfig(raw: cfgRaw)
-        neq(cfg, nil, "AppConfig 解析")
+        eqb(cfg != nil, "AppConfig 解析")
         if let c = cfg {
             eq(c.preferences.count, 3, "偏好数量")
             eq(c.preferences.last?.value, "推荐吃", "最高偏好 value 为字符串")
