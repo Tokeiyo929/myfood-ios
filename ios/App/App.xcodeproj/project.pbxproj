@@ -13,7 +13,7 @@
 		AA00000200000000000000AAB /* TrackRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000AAA /* TrackRecorder.swift */; };
 		AA00000300000000000000AAB /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000300000000000000AAA /* MainTabBarController.swift */; };
 		AA00000400000000000000AAB /* MapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000400000000000000AAA /* MapViewController.swift */; };
-		AA00000500000000000000AAB /* RecordViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000500000000000000AAA /* RecordViewController.swift */; };
+		AA00000500000000000000AAB /* PlaceholderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000500000000000000AAA /* PlaceholderViewController.swift */; };
 		AA00000600000000000000AAB /* HistoryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000600000000000000AAA /* HistoryViewController.swift */; };
 		AA00000700000000000000AAB /* DetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000700000000000000AAA /* DetailViewController.swift */; };
 		AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000800000000000000AAA /* TrackDaysViewController.swift */; };
@@ -40,7 +40,7 @@
 		AA00000200000000000000AAA /* TrackRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecorder.swift; sourceTree = "<group>"; };
 		AA00000300000000000000AAA /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
 		AA00000400000000000000AAA /* MapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewController.swift; sourceTree = "<group>"; };
-		AA00000500000000000000AAA /* RecordViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordViewController.swift; sourceTree = "<group>"; };
+		AA00000500000000000000AAA /* PlaceholderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderViewController.swift; sourceTree = "<group>"; };
 		AA00000600000000000000AAA /* HistoryViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewController.swift; sourceTree = "<group>"; };
 		AA00000700000000000000AAA /* DetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailViewController.swift; sourceTree = "<group>"; };
 		AA00000800000000000000AAA /* TrackDaysViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDaysViewController.swift; sourceTree = "<group>"; };
@@ -101,7 +101,7 @@
 				AA00000200000000000000AAA /* TrackRecorder.swift */,
 				AA00000300000000000000AAA /* MainTabBarController.swift */,
 				AA00000400000000000000AAA /* MapViewController.swift */,
-				AA00000500000000000000AAA /* RecordViewController.swift */,
+				AA00000500000000000000AAA /* PlaceholderViewController.swift */,
 				AA00000600000000000000AAA /* HistoryViewController.swift */,
 				AA00000700000000000000AAA /* DetailViewController.swift */,
 				AA00000800000000000000AAA /* TrackDaysViewController.swift */,
@@ -200,7 +200,7 @@
 				AA00000200000000000000AAB /* TrackRecorder.swift in Sources */,
 				AA00000300000000000000AAB /* MainTabBarController.swift in Sources */,
 				AA00000400000000000000AAB /* MapViewController.swift in Sources */,
-				AA00000500000000000000AAB /* RecordViewController.swift in Sources */,
+				AA00000500000000000000AAB /* PlaceholderViewController.swift in Sources */,
 				AA00000600000000000000AAB /* HistoryViewController.swift in Sources */,
 				AA00000700000000000000AAB /* DetailViewController.swift in Sources */,
 				AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */,

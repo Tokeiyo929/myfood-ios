@@ -460,7 +460,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 let upload = try await API.uploadImage(jpegData: jpeg)
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
-                meta["taken_at"] = RecordViewController.nowTakenAt()
+                meta["taken_at"] = nowTakenAt()
                 if let loc = await LocationOnce.fetch() {
                     meta["latitude"] = loc.lat
                     meta["longitude"] = loc.lng

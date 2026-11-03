@@ -1,4 +1,5 @@
 import UIKit
+import CoreLocation
 
 // 全局主题（对齐小程序 #2f6b4f）
 enum Theme {
@@ -78,5 +79,95 @@ struct DecoratedRecord {
         case .bad: return Theme.bad
         default: return nil
         }
+    }
+}
+
+// 拍摄时间元数据（EXIF 风格，对齐小程序）
+func nowTakenAt() -> String {
+    let f = DateFormatter()
+    f.dateFormat = "yyyy:MM:dd HH:mm:ss"
+    return f.string(from: Date())
+}
+
+// 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）
+@MainActor
+final class LocationOnce: NSObject, CLLocationManagerDelegate {
+    struct Result { let lat: Double; let lng: Double }
+    private let manager = CLLocationManager()
+    private var cont: CheckedContinuation<Result?, Never>?
+    private var requested = false
+
+    static func fetch() async -> Result? {
+        guard CLLocationManager.locationServicesEnabled() else { return nil }
+        let locator = LocationOnce()
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                locator.cont = continuation
+                locator.manager.delegate = locator
+                locator.manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+                if Task.isCancelled { locator.finish(nil) }
+                else { locator.authorize() }
+            }
+        }, onCancel: { Task { @MainActor in locator.finish(nil) } })
+    }
+
+    private func authorize() {
+        guard cont != nil else { return }
+        switch manager.authorizationStatus {
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            if !requested { requested = true; manager.requestLocation() }
+        default: finish(nil)
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { authorize() }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        finish(locations.last.map { Result(lat: $0.coordinate.latitude, lng: $0.coordinate.longitude) })
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { finish(nil) }
+
+    private func finish(_ result: Result?) {
+        let continuation = cont
+        cont = nil
+        manager.delegate = nil
+        manager.stopUpdatingLocation()
+        continuation?.resume(returning: result)
+    }
+}
+
+extension UIImage {
+    func resized(maxDimension: CGFloat) -> UIImage {
+        let m = max(size.width, size.height)
+        guard m > maxDimension else { return self }
+        let scale = maxDimension / m
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in draw(in: CGRect(origin: .zero, size: newSize)) }
+    }
+}
+
+final class Toast {
+    static func show(_ text: String, _ view: UIView?) {
+        guard let v = view else { return }
+        let lb = UILabel()
+        lb.text = text
+        lb.font = .systemFont(ofSize: 14)
+        lb.textColor = .white
+        lb.backgroundColor = UIColor(white: 0, alpha: 0.75)
+        lb.textAlignment = .center
+        lb.layer.cornerRadius = 8
+        lb.clipsToBounds = true
+        lb.translatesAutoresizingMaskIntoConstraints = false
+        v.addSubview(lb)
+        NSLayoutConstraint.activate([
+            lb.centerXAnchor.constraint(equalTo: v.centerXAnchor),
+            lb.bottomAnchor.constraint(equalTo: v.safeAreaLayoutGuide.bottomAnchor, constant: -80),
+            lb.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
+            lb.heightAnchor.constraint(equalToConstant: 36),
+        ])
+        UIView.animate(withDuration: 0.25, delay: 1.2, options: [], animations: { lb.alpha = 0 }) { _ in lb.removeFromSuperview() }
     }
 }

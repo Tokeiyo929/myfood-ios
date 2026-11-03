@@ -3,7 +3,7 @@ set -euo pipefail
 udid=$1
 mode=$2
 case "$mode" in
-  smoke) argument=-autoSmoke; names="01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings" ;;
+  smoke) argument=-autoSmoke; names="01-history 02-detail 04-map-china 05-map-europe 06-rank 07-tracks 08-settings" ;;
   autotest) argument=-autoTest; names= ;;
   *) echo "Unknown test mode: $mode" >&2; exit 1 ;;
 esac

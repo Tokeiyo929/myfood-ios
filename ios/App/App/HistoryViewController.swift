@@ -1,7 +1,7 @@
 import UIKit
 
-// 历史 tab：搜索 + 分页卡片列表（对齐小程序 history 页）
-class HistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate {
+// 历史 tab：搜索 + 分页卡片列表 + 拍照/相册快速建档（原记录页已并入）
+class HistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     var onRecordsChanged: (() -> Void)?
     func markNeedsRefresh() { needsRefresh = true }
     private var table: UITableView!
@@ -14,6 +14,7 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
     private(set) var loaded = false
     private var needsRefresh = true
     private var generation = 0
+    private var config: AppConfig?
     #if DEBUG
     private(set) var completedLoads = 0
     var recordIDs: [Int] { records.map { $0.id } }
@@ -72,6 +73,10 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
             backTop.widthAnchor.constraint(equalToConstant: 76),
             backTop.heightAnchor.constraint(equalToConstant: 36),
         ])
+        // 原记录页入口：拍照/从相册选快速建档
+        let album = UIBarButtonItem(title: "从相册选", style: .plain, target: self, action: #selector(pickAlbum))
+        let camera = UIBarButtonItem(title: "拍照", style: .plain, target: self, action: #selector(pickCamera))
+        navigationItem.rightBarButtonItems = [album, camera]
     }
 
     @objc private func refresh() {
@@ -99,6 +104,67 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
             await loadRecords(reset: true)
         }
     }
+
+    // MARK: 拍照/相册快速建档（自原记录页并入）
+
+    @objc private func pickAlbum() { pick(source: .photoLibrary) }
+    @objc private func pickCamera() { pick(source: .camera) }
+
+    private func pick(source: UIImagePickerController.SourceType) {
+        guard config != nil else {
+            Task {
+                do { config = try await AppConfig.load(); pick(source: source) }
+                catch { Toast.show(error.localizedDescription, view) }
+            }
+            return
+        }
+        guard UIImagePickerController.isSourceTypeAvailable(source) else { Toast.show("来源不可用", view); return }
+        let p = UIImagePickerController()
+        p.sourceType = source
+        p.delegate = self
+        present(p, animated: true)
+    }
+
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        guard let img = info[.originalImage] as? UIImage else { return }
+        Toast.show("上传中…", view)
+        Task {
+            do {
+                // 缩放到最大边长 + JPEG 压缩（对齐小程序 compressAndUpload 规则）
+                let config = try await AppConfig.load()
+                self.config = config
+                guard let jpeg = img.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                    .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
+                let upload = try await API.uploadImage(jpegData: jpeg)
+                var meta = upload["metadata"] as? [String: Any] ?? [:]
+                meta["taken_at"] = nowTakenAt()
+                if let loc = await LocationOnce.fetch() {
+                    meta["latitude"] = loc.lat
+                    meta["longitude"] = loc.lng
+                }
+                let record: [String: Any] = [
+                    "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
+                    "preference": config.defaultPreference,
+                    "comment": [],
+                    "image_path": upload["path"] as! String,
+                    "image_metadata": meta,
+                    "client_key": String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36),
+                ]
+                _ = try await API.submitFood(record)
+                onRecordsChanged?()
+                Toast.show("已保存", view)
+                await loadRecords(reset: true)
+                if !records.isEmpty { // 新记录按修改日期倒序排在最前，回到顶部直接看到
+                    table.scrollToRow(at: IndexPath(row: 0, section: 0), at: .top, animated: false)
+                }
+            } catch {
+                DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+            }
+        }
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true) }
 
     private func loadRecords(reset: Bool) async {
         if !reset && loading { return }

@@ -86,6 +86,12 @@ enum TestFixture {
             let limit = min(50, Int(query.first { $0.name == "limit" }!.value!)!)
             let search = query.first { $0.name == "search" }?.value ?? ""
             let matches = foods.filter { search.isEmpty || ($0["name"] as! String).contains(search) }
+                .sorted { a, b in // 镜像服务端：最后修改日期倒序，id 兜底
+                    let ma = (a["modify_at"] as? [String])?.last ?? ""
+                    let mb = (b["modify_at"] as? [String])?.last ?? ""
+                    if ma != mb { return ma > mb }
+                    return (a["id"] as? Int ?? 0) > (b["id"] as? Int ?? 0)
+                }
             return (200, ["items": Array(matches.dropFirst((page - 1) * limit).prefix(limit)), "total": matches.count])
         }
         var body: [String: Any] = [:]

@@ -31,9 +31,10 @@ enum SmokeTour {
 
     @MainActor
     private static func tour() async throws {
-        guard let tab = keyTab(), let nav = tab.viewControllers?[0] as? UINavigationController,
+        // tab 布局：0 地图 | 1 轨迹 | 2 历史(中心) | 3 设置 | 4 更多(占位)
+        guard let tab = keyTab(), let nav = tab.viewControllers?[2] as? UINavigationController,
               let history = nav.viewControllers.first as? HistoryViewController else { throw APIError(message: "历史页不存在") }
-        tab.selectedIndex = 0
+        tab.selectedIndex = 2
         try await waitUntil("历史加载") { history.loaded }
         try await shot("01-history")
         history.smokeOpenFirst()
@@ -41,13 +42,8 @@ enum SmokeTour {
         try await shot("02-detail")
         nav.popToRootViewController(animated: false)
 
-        tab.selectedIndex = 1
-        let record = (tab.viewControllers?[1] as? UINavigationController)?.topViewController as? RecordViewController
-        try await waitUntil("记录加载") { record?.loaded == true }
-        try await shot("03-record")
-
-        tab.selectedIndex = 2
-        guard let map = (tab.viewControllers?[2] as? UINavigationController)?.topViewController as? FoodMapViewController else {
+        tab.selectedIndex = 0
+        guard let map = (tab.viewControllers?[0] as? UINavigationController)?.topViewController as? FoodMapViewController else {
             throw APIError(message: "美食地图不存在")
         }
         try await waitUntil("地图加载") { map.mapReady }
@@ -59,11 +55,11 @@ enum SmokeTour {
         try await shot("06-rank")
         map.view.subviews.compactMap { $0 as? RankModalView }.forEach { $0.close() }
 
-        tab.selectedIndex = 3
-        let track = (tab.viewControllers?[3] as? UINavigationController)?.topViewController as? MapViewController
+        tab.selectedIndex = 1
+        let track = (tab.viewControllers?[1] as? UINavigationController)?.topViewController as? MapViewController
         try await waitUntil("轨迹加载") { track?.loaded == true }
         try await shot("07-tracks")
-        tab.selectedIndex = 4
+        tab.selectedIndex = 3
         guard (tab.selectedViewController as? UINavigationController)?.topViewController is SettingsViewController else {
             throw APIError(message: "设置页不存在")
         }
