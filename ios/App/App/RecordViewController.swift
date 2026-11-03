@@ -5,9 +5,13 @@ import CoreLocation
 // 上传元数据对齐 compressAndUpload：taken_at + latitude/longitude
 // （小程序取 gcj02 坐标，iOS 只能取 WGS84 原始定位，国内存在偏移，已知差异）
 class RecordViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    var onRecordsChanged: (() -> Void)?
+    func markNeedsRefresh() { needsRefresh = true }
     private var table: UITableView!
     private var records: [[String: Any]] = []
-    private var config: [String: Any]?
+    private var config: AppConfig?
+    private var needsRefresh = true
+    private(set) var loaded = false
 
     override func loadView() {
         view = UIView()
@@ -34,31 +38,24 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         let album = UIBarButtonItem(title: "从相册选", style: .plain, target: self, action: #selector(pickAlbum))
         let camera = UIBarButtonItem(title: "拍照", style: .plain, target: self, action: #selector(pickCamera))
         navigationItem.rightBarButtonItems = [album, camera]
-        loadConfigAndToday()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        loadToday()
+        if needsRefresh { needsRefresh = false; Task { await loadToday() } }
     }
 
-    private func loadConfigAndToday() {
-        Task {
-            if config == nil {
-                config = try? await API.getConfig()
-            }
-            await loadToday()
-        }
-    }
-
-    private func loadToday() {
-        Task {
-            do {
-                let limit = (config?["pagination"] as? [String: Any])?["max_page_size"] as? Int ?? 50
-                let r = try await API.getFoods(page: 1, limit: limit, today: true)
-                records = r["items"] as? [[String: Any]] ?? []
-                DispatchQueue.main.async { self.table.reloadData() }
-            } catch {}
+    private func loadToday() async {
+        loaded = false
+        do {
+            let config = try await AppConfig.load()
+            self.config = config
+            records = try await API.getAllFoods(limit: config.maxPageSize, today: true)
+            loaded = true
+            table.reloadData()
+        } catch {
+            needsRefresh = true
+            Toast.show(error.localizedDescription, view)
         }
     }
 
@@ -66,7 +63,13 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
     @objc private func pickCamera() { pick(source: .camera) }
 
     private func pick(source: UIImagePickerController.SourceType) {
-        guard config != nil else { Toast.show("配置加载中", view); return }
+        guard config != nil else {
+            Task {
+                do { config = try await AppConfig.load(); pick(source: source) }
+                catch { Toast.show(error.localizedDescription, view) }
+            }
+            return
+        }
         guard UIImagePickerController.isSourceTypeAvailable(source) else { Toast.show("来源不可用", view); return }
         let p = UIImagePickerController()
         p.sourceType = source
@@ -81,9 +84,9 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         Task {
             do {
                 // 缩放到最大边长 + JPEG 压缩（对齐小程序 compressAndUpload 规则）
-                let maxDim = CGFloat((config?["image"] as? [String: Any])?["max_dimension"] as? Int ?? 320)
-                let quality = (config?["image"] as? [String: Any])?["quality"] as? Double ?? 0.8
-                let jpeg = img.resized(maxDimension: maxDim).jpegData(compressionQuality: quality) ?? Data()
+                let config = try await AppConfig.load()
+                guard let jpeg = img.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                    .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 let upload = try await API.uploadImage(jpegData: jpeg)
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = Self.nowTakenAt()
@@ -93,17 +96,16 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
                 }
                 let record: [String: Any] = [
                     "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
-                    "preference": ((config?["preferences"] as? [String: Any])?["good"] as? [String: Any])?["value"] as? String ?? "偏好吃",
+                    "preference": config.defaultPreference,
                     "comment": [],
-                    "image_path": upload["path"] as? String ?? "",
+                    "image_path": upload["path"] as! String,
                     "image_metadata": meta,
                     "client_key": String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36),
                 ]
                 _ = try await API.submitFood(record)
-                DispatchQueue.main.async {
-                    Toast.show("已保存", self.view)
-                    self.loadToday()
-                }
+                onRecordsChanged?()
+                Toast.show("已保存", view)
+                await loadToday()
             } catch {
                 DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
             }
@@ -124,7 +126,7 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
     }
 
     func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        "上传中图片已压缩为320边长缩略图"
+        config.map { "上传图片最大边长 \($0.imageMaxDimension) 像素" }
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -147,6 +149,7 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         guard !records.isEmpty else { return }
         guard let id = records[indexPath.row]["id"] as? Int else { return }
         let d = DetailViewController(foodId: id)
+        d.onChanged = { [weak self] in self?.needsRefresh = true; self?.onRecordsChanged?() }
         navigationController?.pushViewController(d, animated: true)
     }
 
@@ -157,7 +160,8 @@ class RecordViewController: UIViewController, UITableViewDataSource, UITableView
         let comments = rec["comment"] as? [String] ?? []
         let panel = CommentPanelController(foodId: id, comments: comments)
         panel.onSaved = { [weak self] in
-            self?.loadToday()
+            self?.onRecordsChanged?()
+            Task { await self?.loadToday() }
         }
         present(UINavigationController(rootViewController: panel), animated: true)
     }
@@ -233,20 +237,16 @@ final class RecordCardCell: UITableViewCell {
         foodId = rec["id"] as? Int ?? 0
         let n = rec["name"] as? String ?? ""
         nameLabel.text = n.isEmpty ? "未命名" : n
-        let t = (rec["taken_at"] as? String) ?? (rec["create_at"] as? String) ?? ""
+        let t = (rec["image_metadata"] as? [String: Any])?["taken_at"] as? String ?? ""
         timeLabel.text = String(t.prefix(16))
         let comments = rec["comment"] as? [String] ?? []
         commentBtn.setTitle("💬 \(comments.count)", for: .normal)
-        if let path = rec["image_path"] as? String {
-            ImageLoader.shared.load(API.imageUrl(path), into: imgView)
-        } else {
-            imgView.image = UIImage(systemName: "photo")
-        }
+        ImageLoader.shared.load(API.imageUrl(rec["image_path"] as? String), into: imgView)
     }
 }
 
 // 评论面板：评论列表 + 输入（🎤 语音）+ 保存（对齐 records 页评论弹层 + voice.js）
-final class CommentPanelController: UIViewController, UITableViewDataSource, VoiceReceiver {
+final class CommentPanelController: UIViewController, UITableViewDataSource, UITextViewDelegate, VoiceReceiver {
     var onSaved: (() -> Void)?
     private let foodId: Int
     private var comments: [String]
@@ -276,6 +276,7 @@ final class CommentPanelController: UIViewController, UITableViewDataSource, Voi
         table.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(table)
 
+        input.delegate = self
         input.font = .systemFont(ofSize: 14)
         input.layer.borderColor = UIColor(white: 0.85, alpha: 1).cgColor
         input.layer.borderWidth = 1
@@ -303,7 +304,7 @@ final class CommentPanelController: UIViewController, UITableViewDataSource, Voi
         voiceBtn.onStart = { [weak self] in
             guard let self else { return }
             self.voiceBase = self.input.text ?? ""
-            if !VoiceManager.shared.start() { Toast.show("语音功能不可用", self.view) }
+            VoiceManager.shared.start()
         }
         voiceBtn.onEnd = { VoiceManager.shared.stop() }
 
@@ -370,6 +371,8 @@ final class CommentPanelController: UIViewController, UITableViewDataSource, Voi
         return cell
     }
 
+    func textViewDidChange(_ textView: UITextView) { placeholder.isHidden = !textView.text.isEmpty }
+
     @objc private func closePanel() { dismiss(animated: true) }
 
     @objc private func saveComment() {
@@ -395,69 +398,66 @@ final class CommentPanelController: UIViewController, UITableViewDataSource, Voi
 
     // MARK: VoiceReceiver（SFSpeech 结果为累计文本，拼接在基串后）
 
+    func voiceDidStop() { voiceBtn.setRecording(false) }
     func voiceDidStart() {
-        DispatchQueue.main.async { self.voiceBtn.setRecording(true) }
+        voiceBtn.setRecording(true)
     }
     func voiceDidRecognize(_ text: String, isFinal: Bool) {
-        DispatchQueue.main.async {
-            self.input.text = self.voiceBase + text
-            self.placeholder.isHidden = !(self.input.text?.isEmpty ?? true)
-        }
+        input.text = voiceBase + text
+        placeholder.isHidden = !(input.text?.isEmpty ?? true)
     }
     func voiceDidFail(_ msg: String) {
-        DispatchQueue.main.async {
-            self.voiceBtn.setRecording(false)
-            Toast.show(msg, self.view)
-        }
+        voiceBtn.setRecording(false)
+        Toast.show(msg, view)
     }
 }
 
 // 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）
+@MainActor
 final class LocationOnce: NSObject, CLLocationManagerDelegate {
     struct Result { let lat: Double; let lng: Double }
     private let manager = CLLocationManager()
     private var cont: CheckedContinuation<Result?, Never>?
-    private static var current: LocationOnce?
+    private var requested = false
 
     static func fetch() async -> Result? {
         guard CLLocationManager.locationServicesEnabled() else { return nil }
-        let mgr = CLLocationManager()
-        let status = mgr.authorizationStatus
-        if status == .notDetermined {
-            mgr.requestWhenInUseAuthorization()
-            for _ in 0..<30 {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-                if mgr.authorizationStatus != .notDetermined { break }
+        let locator = LocationOnce()
+        return await withTaskCancellationHandler(operation: {
+            await withCheckedContinuation { continuation in
+                locator.cont = continuation
+                locator.manager.delegate = locator
+                locator.manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+                if Task.isCancelled { locator.finish(nil) }
+                else { locator.authorize() }
             }
-        }
-        let s = mgr.authorizationStatus
-        guard s == .authorizedWhenInUse || s == .authorizedAlways else { return nil }
-        return await withCheckedContinuation { (c: CheckedContinuation<Result?, Never>) in
-            let h = LocationOnce()
-            h.cont = c
-            LocationOnce.current = h // 保活到回调
-            h.manager.delegate = h
-            h.manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-            h.manager.requestLocation()
+        }, onCancel: { Task { @MainActor in locator.finish(nil) } })
+    }
+
+    private func authorize() {
+        guard cont != nil else { return }
+        switch manager.authorizationStatus {
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            if !requested { requested = true; manager.requestLocation() }
+        default: finish(nil)
         }
     }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) { authorize() }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let c = cont else { return }
-        cont = nil
-        if let l = locations.last {
-            c.resume(returning: Result(lat: l.coordinate.latitude, lng: l.coordinate.longitude))
-        } else {
-            c.resume(returning: nil)
-        }
-        LocationOnce.current = nil
+        finish(locations.last.map { Result(lat: $0.coordinate.latitude, lng: $0.coordinate.longitude) })
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        guard let c = cont else { return }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { finish(nil) }
+
+    private func finish(_ result: Result?) {
+        let continuation = cont
         cont = nil
-        c.resume(returning: nil)
-        LocationOnce.current = nil
+        manager.delegate = nil
+        manager.stopUpdatingLocation()
+        continuation?.resume(returning: result)
     }
 }
 
@@ -491,11 +491,6 @@ final class Toast {
             lb.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
             lb.heightAnchor.constraint(equalToConstant: 36),
         ])
-        lb.layer.padding(10)
         UIView.animate(withDuration: 0.25, delay: 1.2, options: [], animations: { lb.alpha = 0 }) { _ in lb.removeFromSuperview() }
     }
-}
-
-extension CALayer {
-    func padding(_ p: CGFloat) {}
 }

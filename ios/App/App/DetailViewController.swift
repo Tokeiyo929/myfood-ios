@@ -3,7 +3,7 @@ import UIKit
 // 详情页（对齐小程序 detail 页）：
 // 图片横条（今日记录，点选切换/长按换图）+ 基本信息编辑 + 味道轮盘 + 偏好条
 // + 评论（增删改）+ 原料（搜索+含量+chips）+ 保存/删除
-class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDelegate, UIScrollViewDelegate {
+class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDelegate {
     private var foodId: Int
     private var food: [String: Any]?
     private var stripRecords: [[String: Any]] = []   // 横条数据（今日记录）
@@ -11,8 +11,10 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     // 编辑状态
     private var flavorLevels: [String: Int] = [:]
     private var ingredients: [[String: Any]] = []
-    private var comments: [String] = []
-    private var editingCommentIndex: Int?
+    var onChanged: (() -> Void)?
+    private var saving = false
+    private(set) var loaded = false
+    private var draft = CommentDraft()
     private var selectedCategory = ""
     private var worthIt = ""            // "" / "yes" / "no"
     private var currentPref: (value: String, label: String, face: String, level: Int)?
@@ -20,7 +22,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     private var currentRepurchase = 0
 
     // UI
-    private let scrollView = UIScrollView()
+    private let scrollView = DetailScrollView()
     private let stack = UIStackView()
     private let stripCollection: UICollectionView
     private var wheelView: FlavorWheelView!
@@ -63,7 +65,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         view.backgroundColor = .systemBackground
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.keyboardDismissMode = .onDrag
-        scrollView.delegate = self // touchesShouldCancel：轮盘/滑条触摸不滚动页面
+        scrollView.delaysContentTouches = false
         view.addSubview(scrollView)
         stack.axis = .vertical
         stack.spacing = 14
@@ -214,7 +216,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         voiceBtn.onStart = { [weak self] in
             guard let self else { return }
             voiceBase = commentInput.text ?? ""
-            if !VoiceManager.shared.start() { Toast.show("语音功能不可用", view) }
+            VoiceManager.shared.start()
         }
         voiceBtn.onEnd = { [weak self] in
             self?.voiceBtn.setRecording(false)
@@ -262,28 +264,31 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         btns.distribution = .fillEqually
         stack.addArrangedSubview(btns)
 
-        worthYesBtn.addTarget(self, action: #selector(worthTapped(_:)), for: .touchUpInside)
-        worthNoBtn.addTarget(self, action: #selector(worthTapped(_:)), for: .touchUpInside)
     }
 
     // MARK: - 数据
 
     private func loadAll() async {
-        let config = await AppConfig.load()
         do {
-            let limit = config?.maxPageSize ?? 100
-            let r = try await API.getFoods(page: 1, limit: limit, today: true)
-            stripRecords = r["items"] as? [[String: Any]] ?? []
-        } catch { stripRecords = [] }
-        if !stripRecords.contains(where: { ($0["id"] as? Int) == foodId }) {
-            if let f = try? await API.getFoodById(foodId) { stripRecords.insert(f, at: 0) }
+            let config = try await AppConfig.load()
+            stripRecords = try await API.getAllFoods(limit: config.maxPageSize, today: true)
+            if !stripRecords.contains(where: { ($0["id"] as? Int) == foodId }) {
+                stripRecords.insert(try await API.getFoodById(foodId), at: 0)
+            }
+            let cats = try await API.getCategories()
+            allCategories = (cats["items"] as! [[String: Any]]).compactMap { $0["name"] as? String }
+            food = stripRecords.first { ($0["id"] as? Int) == foodId }
+            fill()
+        } catch {
+            let retry = UIButton(type: .system)
+            retry.setTitle("加载失败，点此重试", for: .normal)
+            retry.addAction(UIAction { [weak self, weak retry] _ in
+                retry?.removeFromSuperview()
+                Task { await self?.loadAll() }
+            }, for: .touchUpInside)
+            stack.addArrangedSubview(retry)
+            Toast.show(error.localizedDescription, view)
         }
-        if let cats = try? await API.getCategories(), let items = cats["items"] as? [[String: Any]] {
-            allCategories = items.compactMap { $0["name"] as? String }
-        }
-        food = stripRecords.first { ($0["id"] as? Int) == foodId }
-        if food == nil, let f = try? await API.getFoodById(foodId) { food = f }
-        DispatchQueue.main.async { self.fill() }
     }
 
     private func fill() {
@@ -302,8 +307,8 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         updateWorthButtons()
         selectedCategory = (f["categories"] as? [String])?.first ?? ""
         ingredients = f["ingredients"] as? [[String: Any]] ?? []
-        comments = f["comment"] as? [String] ?? []
-        editingCommentIndex = nil
+        draft.comments = f["comment"] as? [String] ?? []
+        draft.editingIndex = nil
         commentInput.text = ""
         commentPlaceholder.isHidden = false
         ingNameField.text = ""
@@ -329,11 +334,13 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                 self?.flavorLevels[name] = level
             }
             let prefVal = f["preference"] as? String
-            currentPref = c.preferences.first { $0.value == prefVal } ?? c.preferences.first
+            currentPref = c.preferences.first { $0.value == prefVal }
+            if currentPref == nil { Toast.show("偏好值无效，请重新选择", view) }
             prefTrack.configure(options: c.preferences, selected: currentPref)
         }
         stripCollection.reloadData()
         scrollStripToSelected()
+        loaded = true
     }
 
     private func worthStr(_ v: Any?) -> String {
@@ -360,11 +367,6 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         return false
     }
 
-    // UIScrollViewDelegate：触摸落在轮盘/滑条上时不取消其触摸（页面不滚）
-    func touchesShouldCancel(to cancel: UIView) -> Bool {
-        !Self.gestureOwnsTouch(cancel)
-    }
-
     static func prevRecordLabel(_ modifyAt: [String]?) -> String {
         guard let m = modifyAt, m.count >= 2 else { return "" }
         let base = m[m.count - 2]
@@ -386,18 +388,10 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     // MARK: - 图片横条
 
     private func selectRecord(_ id: Int) {
+        guard let rec = stripRecords.first(where: { ($0["id"] as? Int) == id }) else { return }
         foodId = id
-        if let rec = stripRecords.first(where: { ($0["id"] as? Int) == id }) {
-            food = rec
-            fill()
-        } else {
-            Task {
-                if let f = try? await API.getFoodById(id) {
-                    food = f
-                    DispatchQueue.main.async { self.fill() }
-                }
-            }
-        }
+        food = rec
+        fill()
     }
 
     private func pickReplace(source: UIImagePickerController.SourceType) {
@@ -446,7 +440,10 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                 var item: [String: Any] = ["name": n]
                 if let a = amount { item["amount"] = a }
                 ingredients.append(item)
-                DispatchQueue.main.async { self.renderIngredients() }
+                ingNameField.text = ""
+                ingAmountField.text = ""
+                ingPreviewLabel.text = ""
+                renderIngredients()
             } catch {
                 DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
             }
@@ -458,8 +455,9 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         Toast.show("上传中…", view)
         Task {
             do {
-                let jpeg = image.resized(maxDimension: CGFloat(AppConfig.shared?.imageMaxDimension ?? 320))
-                    .jpegData(compressionQuality: AppConfig.shared?.imageQuality ?? 0.8) ?? Data()
+                let config = try await AppConfig.load()
+                guard let jpeg = image.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                    .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 let upload = try await API.uploadImage(jpegData: jpeg)
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = RecordViewController.nowTakenAt()
@@ -467,12 +465,13 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                     meta["latitude"] = loc.lat
                     meta["longitude"] = loc.lng
                 }
-                _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as? String ?? "", "image_metadata": meta])
+                _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as! String, "image_metadata": meta])
                 food?["image_path"] = upload["path"]
                 if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == id }) {
                     stripRecords[i]["image_path"] = upload["path"]
                 }
                 DispatchQueue.main.async {
+                    self.onChanged?()
                     Toast.show("已更换", self.view)
                     self.stripCollection.reloadData()
                 }
@@ -484,7 +483,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
     private func scrollStripToSelected() {
         let idx = stripRecords.firstIndex { ($0["id"] as? Int) == foodId }
-        guard let idx, stripRecords.count > 0 else { return }
+        guard let idx else { return }
         stripCollection.scrollToItem(at: IndexPath(item: idx, section: 0), at: .centeredHorizontally, animated: false)
     }
 
@@ -541,22 +540,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         let n = (ingNameField.text ?? "").trimmingCharacters(in: .whitespaces)
         guard !n.isEmpty else { return }
         let amount: NSNumber? = (ingAmountField.text?.isEmpty == false) ? NSNumber(value: Double(ingAmountField.text!) ?? 0) : nil
-        Task {
-            do {
-                _ = try await API.addIngredient(n)
-                var item: [String: Any] = ["name": n]
-                if let a = amount { item["amount"] = a }
-                ingredients.append(item)
-                ingNameField.text = ""
-                ingAmountField.text = ""
-                DispatchQueue.main.async {
-                    self.renderIngredients()
-                    self.ingPreviewLabel.text = ""
-                }
-            } catch {
-                DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
-            }
-        }
+        doConfirmIngredient(named: n, amount: amount)
     }
 
     private func renderIngredients() {
@@ -580,7 +564,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
     private func renderComments() {
         commentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        comments.enumerated().forEach { idx, text in
+        draft.comments.enumerated().forEach { idx, text in
             let row = UIStackView(arrangedSubviews: [])
             row.axis = .horizontal
             row.spacing = 8
@@ -610,9 +594,9 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
 
     @objc private func editComment(_ g: UITapGestureRecognizer) {
         let idx = g.view?.tag ?? -1
-        guard idx >= 0, idx < comments.count else { return }
-        commentInput.text = comments[idx]
-        editingCommentIndex = idx
+        guard idx >= 0, idx < draft.comments.count else { return }
+        commentInput.text = draft.comments[idx]
+        draft.editingIndex = idx
         commentPlaceholder.isHidden = true
         commentInput.becomeFirstResponder()
     }
@@ -622,9 +606,10 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         let alert = UIAlertController(title: "删除评论", message: "确定要删除这条评论吗？", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in
-            self.comments.remove(at: idx)
-            if self.editingCommentIndex == idx {
-                self.editingCommentIndex = nil
+            guard self.draft.comments.indices.contains(idx) else { return }
+            let deletingEdited = self.draft.editingIndex == idx
+            self.draft.remove(at: idx)
+            if deletingEdited {
                 self.commentInput.text = ""
                 self.commentPlaceholder.isHidden = false
             }
@@ -669,23 +654,14 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     // MARK: - 保存 / 删除
 
     @objc private func saveDetail() {
-        guard let f = food, let c = AppConfig.shared else { return }
-        // 评论合并（编辑中 → 替换/删空，否则追加）
+        guard loaded, !saving, let f = food, let c = AppConfig.shared else { return }
+        guard let preference = currentPref?.value else { Toast.show("请选择有效偏好", view); return }
         let text = commentInput.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let idx = editingCommentIndex {
-            if text.isEmpty { comments.remove(at: idx) } else { comments[idx] = text }
-            editingCommentIndex = nil
-        } else if !text.isEmpty {
-            comments.append(text)
-        }
-        commentInput.text = ""
-        commentPlaceholder.isHidden = false
-        renderComments()
+        let newComments: [String]
+        do { newComments = try draft.applying(text) }
+        catch { Toast.show(error.localizedDescription, view); return }
 
-        let flavors = c.flavors.compactMap { name -> [String: Any]? in
-            guard let lv = flavorLevels[name], lv > (c.flavorScale["min"] ?? 0) else { return nil }
-            return ["name": name, "level": lv]
-        }
+        let flavors: [[String: Any]] = c.flavors.map { ["name": $0, "level": flavorLevels[$0]!] }
         var price: Any = NSNull()
         let o = origField.text!.trimmingCharacters(in: .whitespaces)
         let dsc = discField.text!.trimmingCharacters(in: .whitespaces)
@@ -709,15 +685,24 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
             "categories": selectedCategory.isEmpty ? [] : [selectedCategory],
             "ingredients": ingredients,
             "flavors": flavors,
-            "preference": currentPref?.value ?? (f["preference"] as? String ?? "偏好吃"),
+            "preference": preference,
             "worth_it": worthIt == "" ? NSNull() : NSNumber(value: worthIt == "yes"),
-            "comment": comments,
+            "comment": newComments,
         ]
         let id = f["id"] as! Int
         Toast.show("保存中…", view)
+        saving = true
+        view.isUserInteractionEnabled = false
         Task {
+            defer { saving = false; view.isUserInteractionEnabled = true }
             do {
                 _ = try await API.updateFoodDetails(id, fields: fields)
+                draft.comments = newComments
+                draft.editingIndex = nil
+                commentInput.text = ""
+                commentPlaceholder.isHidden = false
+                renderComments()
+                onChanged?()
                 var updated = f
                 for (k, v) in fields { updated[k] = v }
                 food = updated
@@ -739,8 +724,11 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in
             Task {
-                _ = try? await API.deleteFood(self.foodId)
-                DispatchQueue.main.async { self.navigationController?.popViewController(animated: true) }
+                do {
+                    _ = try await API.deleteFood(self.foodId)
+                    self.onChanged?()
+                    self.navigationController?.popViewController(animated: true)
+                } catch { Toast.show(error.localizedDescription, self.view) }
             }
         })
         present(alert, animated: true)
@@ -890,11 +878,7 @@ class StripCell: UICollectionViewCell {
         layer.borderWidth = selected ? 2 : 0
         layer.borderColor = selected ? Theme.primary.cgColor : nil
         layer.cornerRadius = 10
-        if let p = imagePath, let url = API.imageUrl(p) {
-            ImageLoader.shared.load(url, into: imgView)
-        } else {
-            imgView.image = UIImage(systemName: "photo")
-        }
+        ImageLoader.shared.load(API.imageUrl(imagePath), into: imgView)
     }
 }
 
@@ -935,10 +919,10 @@ class FlavorWheelView: UIView {
     }
 
     override func draw(_ rect: CGRect) {
-        guard !flavors.isEmpty, let ctx = UIGraphicsGetCurrentContext() else { return }
+        guard !flavors.isEmpty, let scale, let ctx = UIGraphicsGetCurrentContext() else { return }
         let cx = rect.midX, cy = rect.midY
         let r = min(rect.width, rect.height) * 0.34
-        let maxLv = CGFloat(scale?["max"] ?? 5)
+        let maxLv = CGFloat(scale["max"]!)
         let pts: [(String, Int, CGPoint, CGFloat)] = flavors.enumerated().map { i, v in
             let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(flavors.count)
             let p = CGPoint(x: cx + cos(a) * r, y: cy + sin(a) * r)
@@ -959,7 +943,7 @@ class FlavorWheelView: UIView {
         ctx.strokePath()
         // 数据多边形
         let dataPts = pts.map { v -> CGPoint in
-            let dist = r * CGFloat(v.1) / maxLv
+            let dist = r * CGFloat(v.1 - scale["min"]!) / (maxLv - CGFloat(scale["min"]!))
             return CGPoint(x: cx + cos(v.3) * dist, y: cy + sin(v.3) * dist)
         }
         ctx.addLines(between: dataPts)
@@ -973,7 +957,7 @@ class FlavorWheelView: UIView {
         ctx.strokePath()
         // 手柄 + 标签
         pts.enumerated().forEach { i, p in
-            let dist = r * CGFloat(p.1) / maxLv
+            let dist = r * CGFloat(p.1 - scale["min"]!) / (maxLv - CGFloat(scale["min"]!))
             let hp = CGPoint(x: cx + cos(p.3) * dist, y: cy + sin(p.3) * dist)
             ctx.setFillColor(Theme.primary.cgColor)
             ctx.fillEllipse(in: CGRect(x: hp.x - 5, y: hp.y - 5, width: 10, height: 10))
@@ -1025,9 +1009,10 @@ class FlavorWheelView: UIView {
         let a = -CGFloat.pi / 2 + CGFloat(draggingAxis) * CGFloat.pi * 2 / CGFloat(flavors.count)
         let r = min(bounds.width, bounds.height) * 0.34
         let proj = (p.x - bounds.midX) * cos(a) + (p.y - bounds.midY) * sin(a)
-        let maxLv = CGFloat(s["max"] ?? 5)
-        let lv = Int(round(proj / r * maxLv))
-        let clamped = max(s["min"] ?? 0, min(s["max"] ?? 5, lv))
+        let maxLv = CGFloat(s["max"]!)
+        guard r > 0 else { return }
+        let lv = Int(round(proj / r * (maxLv - CGFloat(s["min"]!)))) + s["min"]!
+        let clamped = max(s["min"]!, min(s["max"]!, lv))
         levels[flavors[draggingAxis]] = clamped
         onLevelChange?(flavors[draggingAxis], clamped)
         setNeedsDisplay()
@@ -1051,11 +1036,10 @@ class PreferenceTrack: UIView {
         layer.cornerRadius = 8
         clipsToBounds = true
         fillView.backgroundColor = Theme.primary.withAlphaComponent(0.25)
-        fillView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(fillView)
         thumbView.backgroundColor = Theme.primary
+        thumbView.bounds.size = CGSize(width: 18, height: 18)
         thumbView.layer.cornerRadius = 9
-        thumbView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(thumbView)
         faceLabel.font = .systemFont(ofSize: 24)
         faceLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -1065,12 +1049,6 @@ class PreferenceTrack: UIView {
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         addSubview(nameLabel)
         NSLayoutConstraint.activate([
-            fillView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            fillView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            fillView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            thumbView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            thumbView.widthAnchor.constraint(equalToConstant: 18),
-            thumbView.heightAnchor.constraint(equalToConstant: 18),
             faceLabel.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             faceLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             nameLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
@@ -1091,7 +1069,14 @@ class PreferenceTrack: UIView {
     }
 
     private func layoutForSelection() {
-        guard let sel = selected, options.count >= 2, bounds.height > 0 else { return }
+        guard let sel = selected, options.count >= 2, bounds.height > 0 else {
+            fillView.frame = .zero
+            thumbView.isHidden = true
+            faceLabel.text = ""
+            nameLabel.text = "请选择"
+            return
+        }
+        thumbView.isHidden = false
         let minL = options.first!.level
         let maxL = options.last!.level
         let pct = CGFloat(sel.level - minL) / CGFloat(maxL - minL)
@@ -1123,20 +1108,17 @@ class PreferenceTrack: UIView {
 // MARK: - 语音输入
 
 extension DetailViewController: VoiceReceiver {
+    func voiceDidStop() { voiceBtn.setRecording(false) }
     func voiceDidStart() {
-        DispatchQueue.main.async { self.voiceBtn.setRecording(true) }
+        voiceBtn.setRecording(true)
     }
     func voiceDidRecognize(_ text: String, isFinal: Bool) {
-        DispatchQueue.main.async {
-            self.commentInput.text = self.voiceBase + text
-            self.commentPlaceholder.isHidden = !(self.commentInput.text?.isEmpty ?? true)
-        }
+        commentInput.text = voiceBase + text
+        commentPlaceholder.isHidden = !(commentInput.text?.isEmpty ?? true)
     }
     func voiceDidFail(_ msg: String) {
-        DispatchQueue.main.async {
-            self.voiceBtn.setRecording(false)
-            Toast.show(msg, self.view)
-        }
+        voiceBtn.setRecording(false)
+        Toast.show(msg, view)
     }
 }
 
@@ -1149,4 +1131,16 @@ extension DetailViewController: UIImagePickerControllerDelegate, UINavigationCon
         if pickingForOcr { presentOcr(img) } else { uploadReplace(img) }
     }
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true) }
+}
+
+final class DetailScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool {
+        !DetailViewController.gestureOwnsTouch(view) && super.touchesShouldCancel(in: view)
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer === panGestureRecognizer,
+           DetailViewController.gestureOwnsTouch(hitTest(gestureRecognizer.location(in: self), with: nil)) { return false }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
 }

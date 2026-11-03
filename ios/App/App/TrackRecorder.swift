@@ -2,16 +2,21 @@ import Foundation
 import CoreLocation
 
 // 纯原生轨迹记录器：CLLocationManager 后台持续定位，锁屏也记点
+@MainActor
 final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     static let shared = TrackRecorder()
 
     private let manager = CLLocationManager()
     private var lastSent: (lat: Double, lng: Double, t: TimeInterval)?
-    private var pending: [[String: Any]] = []
+    private let queue = TrackUploadQueue()
+    private var startRequested = false
+    private var pointDay = Calendar.current.startOfDay(for: Date())
     private var flushTimer: Timer?
     private(set) var isTracking = false
     private(set) var todayPoints: [(lat: Double, lng: Double)] = []
     var onNewPoint: ((Double, Double) -> Void)?
+    var onStateChange: (() -> Void)?
+    var onError: ((String) -> Void)?
 
     override init() {
         super.init()
@@ -22,28 +27,66 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     }
 
     func start() {
-        manager.requestAlwaysAuthorization()
-        manager.allowsBackgroundLocationUpdates = true
-        manager.showsBackgroundLocationIndicator = true
-        // 移动5米或最长15秒回调一次（前后台均生效）
-        manager.startUpdatingLocation()
-        manager.allowDeferredLocationUpdates(untilTraveled: 5, timeout: 15)
-        isTracking = true
-        lastSent = nil
-        flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.flush(force: false)
+        guard !isTracking else { return }
+        startRequested = true
+        switch manager.authorizationStatus {
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse: beginTracking()
+        default:
+            startRequested = false
+            onError?("请在设置中允许定位")
         }
     }
 
-    func stop() {
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            if startRequested { beginTracking() }
+        case .denied, .restricted:
+            guard startRequested || isTracking else { return }
+            startRequested = false
+            if isTracking {
+                Task {
+                    do { try await stop() }
+                    catch { onError?("轨迹上传失败，待上传点已保留") }
+                }
+            }
+            onError?("未获得定位权限")
+        default: break
+        }
+    }
+
+    private func beginTracking() {
+        guard !isTracking else { return }
+        startRequested = false
+        if manager.authorizationStatus == .authorizedWhenInUse { manager.requestAlwaysAuthorization() }
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
+        // 请求延迟批量定位；系统不保证固定回调间隔。
+        manager.startUpdatingLocation()
+        manager.allowDeferredLocationUpdates(untilTraveled: 5, timeout: 15)
+        isTracking = true
+        onStateChange?()
+        lastSent = nil
+        flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.flush() }
+        }
+    }
+
+    func stop() async throws {
+        startRequested = false
         manager.stopUpdatingLocation()
         isTracking = false
+        onStateChange?()
         flushTimer?.invalidate()
         flushTimer = nil
-        flush(force: true)
+        try await queue.flush()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard isTracking else { return }
+        let day = Calendar.current.startOfDay(for: Date())
+        if day != pointDay { todayPoints.removeAll(); pointDay = day }
         for loc in locations {
             guard loc.horizontalAccuracy > 0, loc.horizontalAccuracy < 100 else { continue }
             let lat = loc.coordinate.latitude, lng = loc.coordinate.longitude
@@ -56,24 +99,19 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
                 if dist <= 2 && (now - last.t) < 30000 { continue }
             }
             lastSent = (lat, lng, now)
-            todayPoints.append((lat, lng))
-            pending.append(["lat": lat, "lng": lng, "ts": now, "acc": loc.horizontalAccuracy])
-            DispatchQueue.main.async { self.onNewPoint?(lat, lng) }
-        }
-        if pending.count >= 10 { flush(force: false) }
-    }
-
-    private func flush(force: Bool) {
-        guard !pending.isEmpty else { return }
-        let batch = pending
-        pending.removeAll()
-        Task {
-            do { try await API.postTrackPoints(batch) }
-            catch {
-                if force { pending.insert(contentsOf: batch, at: 0) } // 最终失败放回，下次再试
+            if Calendar.current.isDateInToday(loc.timestamp) {
+                todayPoints.append((lat, lng))
+                onNewPoint?(lat, lng)
             }
+            queue.append(["lat": lat, "lng": lng, "ts": now, "acc": loc.horizontalAccuracy])
         }
+        if queue.pending.count >= 10 { Task { await flush() } }
     }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+    private func flush() async {
+        do { try await queue.flush() }
+        catch { onError?("轨迹上传失败，待上传点已保留；联网后重试") }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { onError?(error.localizedDescription) }
 }

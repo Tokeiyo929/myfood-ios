@@ -14,12 +14,6 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     private static func toFullName(_ name: String) -> String {
         provinceMap[name] ?? (name + "省")
     }
-    private static func toRegionName(_ full: String) -> String {
-        for (k, v) in provinceMap where v == full { return k }
-        if full.hasSuffix("省") { return String(full.dropLast()) }
-        return full
-    }
-
     private let visitedColor = UIColor(red: 0.702, green: 0.616, blue: 0.859, alpha: 1) // #b39ddb
     private let defaultColor = UIColor(red: 0.941, green: 0.941, blue: 0.941, alpha: 1) // #f0f0f0
     private let borderColor = UIColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1)        // #ccc
@@ -44,13 +38,28 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     private var dishTitleLabel: UILabel!
     private var dishStack: UIStackView!
     private var rankModal: RankModalView?
-    private var dataReady = false
+    private(set) var dataReady = false
+    var mapReady: Bool { dataReady && !regionLayers.isEmpty }
+    private var renderedSize = CGSize.zero
+    private var needsRefresh = true
+    private var loading = false
+
+    func markNeedsRefresh() { needsRefresh = true }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "地图"
         view.backgroundColor = .systemBackground
         buildUI()
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .refresh, target: self, action: #selector(refreshData))
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if needsRefresh { needsRefresh = false; Task { await loadData() } }
+    }
+
+    @objc private func refreshData() {
         Task { await loadData() }
     }
 
@@ -186,20 +195,13 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     // MARK: - 数据（对齐 loadData）
 
     private func loadData() async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
         do {
-            let config = await AppConfig.load()
-            let limit = config?.maxPageSize ?? 100
-            var foods: [[String: Any]] = []
-            let first = try await API.getFoods(page: 1, limit: limit)
-            foods += first["items"] as? [[String: Any]] ?? []
-            let total = first["total"] as? Int ?? foods.count
-            let pages = Int(ceil(Double(total) / Double(limit)))
-            if pages >= 2 {
-                for p in 2...pages {
-                    let r = try await API.getFoods(page: p, limit: limit)
-                    foods += r["items"] as? [[String: Any]] ?? []
-                }
-            }
+            let config = try await AppConfig.load()
+            let limit = config.maxPageSize
+            let foods = try await API.getAllFoods(limit: limit)
             allFoods = foods
             var visited: Set<String> = []
             for f in foods {
@@ -224,6 +226,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
                 renderMap()
             }
         } catch {
+            needsRefresh = true
             await MainActor.run { statusLabel.text = "地图数据加载失败" }
         }
     }
@@ -233,7 +236,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     // 布局后重绘（首帧 scrollView.bounds 可能为 0）
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if dataReady && regionLayers.isEmpty {
+        if dataReady && (regionLayers.isEmpty || renderedSize != scrollView.bounds.size) {
             renderMap()
         }
     }
@@ -272,6 +275,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     }
 
     private func renderMap() {
+        renderedSize = scrollView.bounds.size
         // 清空旧 layer
         regionLayers.forEach { $0.layer.removeFromSuperlayer() }
         regionLayers = []
@@ -355,7 +359,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     func smokeOpenRank() {
         // dishList 只有点省后才填，初始为空；直接用已解锁类目集合
         guard let first = visitedDishes.sorted().first else { return }
-        openCatModal(name: first, visited: true)
+        openCatModal(name: first)
     }
 
     private func switchRegion(_ r: String) {
@@ -403,7 +407,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
             row.backgroundColor = UIColor(white: 0.96, alpha: 1)
             row.layer.cornerRadius = 8
             row.addAction(UIAction(handler: { [weak self] _ in
-                self?.openCatModal(name: d.name, visited: d.visited)
+                self?.openCatModal(name: d.name)
             }), for: .touchUpInside)
             dishStack.addArrangedSubview(row)
         }
@@ -426,31 +430,28 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         return ranked + rest
     }
 
-    private func openCatModal(name: String, visited: Bool) {
+    private func openCatModal(name: String) {
         guard visitedDishes.contains(name) else { return } // 未解锁不可点
         let foods = sortByRank(allFoods.filter { ($0["categories"] as? [String] ?? []).contains(name) }, name)
         let modal = RankModalView(category: name, foods: foods)
-        modal.onApplyRank = { [weak self] list in self?.applyRankOrder(list, cat: name) }
+        modal.onApplyRank = { [weak self] list in
+            guard let self else { throw APIError(message: "地图页面已关闭") }
+            try await self.applyRankOrder(list, cat: name)
+        }
         modal.onClose = { [weak self] in self?.rankModal = nil }
+        modal.frame = view.bounds
+        modal.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(modal)
         rankModal = modal
     }
 
     // 交换后按显示顺序写入名次（1 开始），只 PATCH 有变化的记录（对齐 applyRankOrder）
-    private func applyRankOrder(_ list: [[String: Any]], cat: String) {
-        for (i, f) in list.enumerated() {
-            guard let id = f["id"] as? Int else { continue }
-            var rank = f["category_rank"] as? [String: Any] ?? [:]
-            if (rank[cat] as? Int) == i + 1 { continue }
-            rank[cat] = i + 1
-            if let idx = allFoods.firstIndex(where: { ($0["id"] as? Int) == id }) {
-                allFoods[idx]["category_rank"] = rank
-            }
-            Task {
-                do { _ = try await API.updateFoodDetails(id, fields: ["category_rank": rank]) }
-                catch { await MainActor.run { Toast.show("排名保存失败", self.view) } }
+    private func applyRankOrder(_ list: [[String: Any]], cat: String) async throws {
+        for change in RankOrder.changes(list, current: allFoods, category: cat) {
+            _ = try await API.updateFoodDetails(change.id, fields: ["category_rank": change.rank])
+            if let index = allFoods.firstIndex(where: { ($0["id"] as? Int) == change.id }) {
+                allFoods[index]["category_rank"] = change.rank
             }
         }
-        // allFoods 里对应的 category_rank 已更新；弹窗内列表由 RankModalView 自己维护
     }
 }

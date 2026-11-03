@@ -1,7 +1,4 @@
-node_modules/
-unpackage/
-dist/
 .DS_Store
 *.ipa
 build/
-*.ipa
+__pycache__/

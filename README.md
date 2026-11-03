@@ -1,27 +1,43 @@
-# MyFood iOS (Capacitor)
+# MyFood iOS
 
-MyFood 的 iOS 端：原生壳（Capacitor）+ 内置网页（www/），复用 myfood-worker 后端。**真 app**，有图标、独立运行。
+原生 Swift/UIKit 应用，使用 MapKit、CoreLocation、Speech；最低 iOS 15。后端为 myfood-worker，API 地址统一在 `ios/App/App/API.swift`。
 
-## 构建（全自动，无需本地 Mac）
-- GitHub Actions（`.github/workflows/build-ios.yml`）：每次 push 到 master 自动在 macOS runner 上构建**未签名 ipa**
-- 到仓库 Actions 页面 → 最新 run → Artifacts 下载 `myfood-unsigned-ipa`
+## 开发与构建
 
-## 安装到 iPhone（Sideloadly，免费 Apple ID，7 天有效）
-1. 下载 artifact 得到 `myfood-unsigned.ipa`
-2. 打开 Sideloadly，数据线连 iPhone（手机点"信任"）
-3. 拖入 ipa → 输入 Apple ID → Start
-4. 手机：设置 → 通用 → VPN与设备管理 → 信任 Apple ID
-5. 每 7 天连电脑重签（打开 Sideloadly 插线即自动续签）
+用 Xcode 打开 `ios/App/App.xcodeproj`，选择 App scheme。真机运行需配置开发签名。
 
-## 结构
-- `www/` — 应用本体（原生 JS SPA：api.js + app.js + app.css + index.html）
-- `ios/App/` — Capacitor 生成的原生工程（xcodebuild 构建）
-- `capacitor.config.json` — appId com.tokeiyo929.myfood
+```sh
+cd ios/App
+xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO
+```
 
-## 本地开发
-- 改 `www/` 下的文件 → `npx cap sync ios` → push（或直接 push，CI 会 sync）
-- 注意：`ios/App/App/public/` 是 www 的拷贝，以 www/ 为准
+推送 master 的 iOS、测试或 workflow 改动后，Actions 构建未签名 IPA、执行隔离回归及模拟器巡访。成功后上传 artifact 并发布 release；可用 Sideloadly 重签安装。
 
-## 注意
-- 拍摄时间用上传时刻；后端已换自定义域名 myfood.tuqingyu.xyz，国内直连
-- iOS 上照片选择用 WKWebView file input（iOS 自动把 HEIC 转 JPEG）
+## 测试
+
+纯 Swift 核心回归可在 Mac 或 Linux Swift 6 环境运行，无第三方依赖：
+
+```sh
+swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
+/tmp/myfood-core-tests
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+Debug App 启动参数 `-autoTest` 与 `-autoSmoke` 使用 URLProtocol 内存数据，未知 API 端点直接失败。前者测试实际请求编解码和核心状态，后者等待目标页面就绪，由 runner 截取八张页面截图。Release 不启用测试参数。真实拖动、首次授权、后台定位仍需模拟器或设备验证。
+
+`tests/backend_api_test.py` 为独立后端集成测试，会创建并删除临时记录，必须显式提供测试服务地址：
+
+```sh
+python3 tests/backend_api_test.py http://localhost:8787
+```
+
+可加 `--proxy URL`；`--proxy none` 直连，省略则遵循系统代理。临时记录在 finally 中清理；网络故障仍可能导致服务端删除未完成，脚本会报告失败及记录 ID。
+
+## 结构与边界
+
+- `ios/App/App/`：页面、API、现有 AppConfig、轨迹与语音管理器。
+- `AppState.swift`：共享配置校验、评论草稿、轨迹上传队列和排名变更计算。
+- `tests/`：隔离回归、模拟器 runner、显式目标后端集成测试。
+- 图片尺寸、JPEG 质量、分页和默认偏好来自已验证的 `/api/config`；配置失败允许重试。
+- 拍摄时间使用上传时刻，元数据为 `image_metadata.taken_at`。定位使用 WGS84，国内地图可能存在坐标偏移。
+- 轨迹上传失败保留内存批次，联网后重试；进程退出后的恢复尚未落盘。服务端排名逐条更新，部分失败需在弹窗重试。

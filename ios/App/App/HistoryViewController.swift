@@ -2,13 +2,22 @@ import UIKit
 
 // 历史 tab：搜索 + 分页卡片列表（对齐小程序 history 页）
 class HistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate {
+    var onRecordsChanged: (() -> Void)?
+    func markNeedsRefresh() { needsRefresh = true }
     private var table: UITableView!
     private var searchBar: UISearchBar!
     private var records: [DecoratedRecord] = []
     private var search = ""
     private var page = 1
     private var hasMore = true
-    private var loading = false
+    private(set) var loading = false
+    private(set) var loaded = false
+    private var needsRefresh = true
+    private var generation = 0
+    #if DEBUG
+    private(set) var completedLoads = 0
+    var recordIDs: [Int] { records.map { $0.id } }
+    #endif
     private var searchTask: Task<Void, Never>?
     private let backTop = UIButton(type: .system)
 
@@ -63,10 +72,6 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
             backTop.widthAnchor.constraint(equalToConstant: 76),
             backTop.heightAnchor.constraint(equalToConstant: 36),
         ])
-        Task {
-            _ = await AppConfig.load()
-            await loadRecords(reset: true)
-        }
     }
 
     @objc private func refresh() {
@@ -79,7 +84,8 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if records.isEmpty {
+        if needsRefresh {
+            needsRefresh = false
             Task { await loadRecords(reset: true) }
         }
     }
@@ -95,28 +101,38 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
     }
 
     private func loadRecords(reset: Bool) async {
-        if loading { return }
+        if !reset && loading { return }
+        generation += 1
+        let requestGeneration = generation
+        let query = search
         loading = true
+        loaded = false
+        defer {
+            #if DEBUG
+            completedLoads += 1
+            #endif
+            if generation == requestGeneration {
+                loading = false
+                table.refreshControl?.endRefreshing()
+            }
+        }
         let reqPage = reset ? 1 : page + 1
         do {
-            let limit = AppConfig.shared?.pageSize ?? 10
-            let r = try await API.getFoods(page: reqPage, limit: limit, search: search)
-            let items = (r["items"] as? [[String: Any]] ?? []).map { AppConfig.decorate($0) }
-            let total = r["total"] as? Int ?? 0
+            let config = try await AppConfig.load()
+            let limit = config.pageSize
+            let r = try await API.getFoods(page: reqPage, limit: limit, search: query)
+            guard requestGeneration == generation else { return }
+            let items = (r["items"] as! [[String: Any]]).map { AppConfig.decorate($0) }
+            let total = r["total"] as! Int
+            loaded = true
             records = reset ? items : records + items
             page = reqPage
             hasMore = records.count < total
-            DispatchQueue.main.async {
-                self.table.reloadData()
-                self.table.refreshControl?.endRefreshing()
-            }
+            table.reloadData()
         } catch {
-            DispatchQueue.main.async {
-                self.table.refreshControl?.endRefreshing()
-                Toast.show(error.localizedDescription, self.view)
-            }
+            guard requestGeneration == generation else { return }
+            Toast.show(error.localizedDescription, view)
         }
-        loading = false
     }
 
     // MARK: table
@@ -153,6 +169,7 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         guard !records.isEmpty else { return }
         let d = DetailViewController(foodId: records[indexPath.row].id)
+        d.onChanged = { [weak self] in self?.needsRefresh = true; self?.onRecordsChanged?() }
         navigationController?.pushViewController(d, animated: true)
     }
 
@@ -234,23 +251,13 @@ class HistoryCardCell: UITableViewCell {
         ingRow.text = d.ingredientLabels.isEmpty ? "" : "材料：" + d.ingredientLabels.joined(separator: " ")
         repurchaseLabel.text = d.repurchase > 0 ? "复购\(d.repurchase)次" : ""
         for l in [flavorRow, ingRow, repurchaseLabel] { l.isHidden = (l.text ?? "").isEmpty }
-        card.layer.borderWidth = 0
-        card.layer.borderColor = nil
-        if let bc = d.prefBorderColor {
-            card.layer.borderWidth = 4
-            card.layer.borderColor = bc.cgColor
-            card.frame = card.frame // 左边框模拟：用 mask 加左条
-            addLeftBorder(color: bc)
-        } else {
-            addLeftBorder(color: Theme.border)
-        }
+        addLeftBorder(color: d.prefBorderColor ?? Theme.border)
         ImageLoader.shared.load(API.imageUrl(d.imagePath), into: imgView)
-        if d.imagePath == nil { imgView.image = nil }
     }
 
     private var leftBar: UIView?
     private func addLeftBorder(color: UIColor) {
-        leftBar?.removeFromSuperview()
+        if let leftBar { leftBar.backgroundColor = color; return }
         let bar = UIView()
         bar.backgroundColor = color
         bar.translatesAutoresizingMaskIntoConstraints = false

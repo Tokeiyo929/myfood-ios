@@ -6,7 +6,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        print("MYFOOD didLaunch args=\(ProcessInfo.processInfo.arguments)") // CI 诊断
+        #if DEBUG
+        if AutoTest.enabled || SmokeTour.enabled { TestFixture.install() }
+        #endif
         return true
     }
 

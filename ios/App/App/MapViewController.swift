@@ -8,6 +8,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
     private var toggleBtn: UIButton!
     private var infoLabel: UILabel!
     var viewDay: String?
+    private(set) var loaded = false
 
     override func loadView() {
         view = UIView()
@@ -18,17 +19,9 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         super.viewDidLoad()
         title = viewDay.map { "轨迹 · \($0)" } ?? "轨迹"
         buildUI()
-        loadTrack()
         // 轨迹 tab 根页：右上角进每日记录列表（二级页）；按天进入的历史页不重复加
         if viewDay == nil {
             navigationItem.rightBarButtonItem = UIBarButtonItem(title: "每日记录", style: .plain, target: self, action: #selector(openDayList))
-        }
-        TrackRecorder.shared.onNewPoint = { [weak self] lat, lng in
-            DispatchQueue.main.async {
-                guard let self, self.viewDay == nil else { return }
-                self.addPointToLine(lat: lat, lng: lng)
-                self.statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
-            }
         }
     }
 
@@ -89,6 +82,22 @@ class MapViewController: UIViewController, MKMapViewDelegate {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         updateToggle()
+        loadTrack()
+        guard viewDay == nil else { return }
+        TrackRecorder.shared.onNewPoint = { [weak self] lat, lng in
+            self?.addPointToLine(lat: lat, lng: lng)
+            self?.statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
+        }
+        TrackRecorder.shared.onStateChange = { [weak self] in self?.updateToggle() }
+        TrackRecorder.shared.onError = { [weak self] message in Toast.show(message, self?.view) }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        guard viewDay == nil else { return }
+        TrackRecorder.shared.onNewPoint = nil
+        TrackRecorder.shared.onStateChange = nil
+        TrackRecorder.shared.onError = nil
     }
 
     private func updateToggle() {
@@ -98,27 +107,18 @@ class MapViewController: UIViewController, MKMapViewDelegate {
 
     @objc private func toggleTracking() {
         if TrackRecorder.shared.isTracking {
-            TrackRecorder.shared.stop()
-            infoLabel.text = "已停止"
-            loadTrack() // 回读服务器点，确认落库
+            toggleBtn.isEnabled = false
+            Task {
+                defer { toggleBtn.isEnabled = true }
+                do {
+                    try await TrackRecorder.shared.stop()
+                    loadTrack()
+                } catch { Toast.show("上传失败，轨迹点已保留；开始记录后重试", view) }
+            }
         } else {
-            requestLocationPermission()
             TrackRecorder.shared.start()
-            infoLabel.text = "记录中…(锁屏也持续)"
         }
         updateToggle()
-    }
-
-    private func requestLocationPermission() {
-        let m = CLLocationManager()
-        switch m.authorizationStatus {
-        case .notDetermined:
-            m.requestAlwaysAuthorization()
-        case .authorizedWhenInUse:
-            // 已有使用期间权限，引导升到始终
-            m.requestAlwaysAuthorization()
-        default: break
-        }
     }
 
     private func loadTrack() {
@@ -127,7 +127,8 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         Task {
             do {
                 let points = try await API.getTrackPoints(day: day)
-                DispatchQueue.main.async { self.render(points: points) }
+                render(points: points)
+                loaded = true
             } catch {
                 DispatchQueue.main.async { self.statusLabel.text = "轨迹加载失败" }
             }
@@ -146,7 +147,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
             coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lng))
         }
         if let first = coords.first {
-            var r = MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800)
+            let r = MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800)
             mapView.setRegion(r, animated: false)
         }
         let line = MKPolyline(coordinates: coords, count: coords.count)

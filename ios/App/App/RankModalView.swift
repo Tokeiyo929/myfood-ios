@@ -2,10 +2,12 @@ import UIKit
 
 // 类别排行榜弹窗（对齐小程序 rank-panel）：
 // 长按条目拖到另一条上交换排名，边缘自动滚动，松手 PATCH category_rank
-final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
+final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate, UIGestureRecognizerDelegate {
 
     var onClose: (() -> Void)?
-    var onApplyRank: (([[String: Any]]) -> Void)?
+    var onApplyRank: (([[String: Any]]) async throws -> Void)?
+    private var saving = false
+    private let retry = UIButton(type: .system)
 
     private let category: String
     private var foods: [[String: Any]]
@@ -15,7 +17,7 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
     private var dragIndex = -1
     private var overIndex = -1
     private var dragSnapshot: UIView?
-    private var dragCellAlpha: CGFloat = 1
+    private var grabOffset: CGFloat = 0
     private var lastTouchY: CGFloat = 0
     private var autoDir = 0
     private var autoTimer: Timer?
@@ -32,10 +34,10 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     private func buildUI() {
-        frame = UIScreen.main.bounds
         backgroundColor = UIColor(white: 0, alpha: 0.45)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(maskTapped))
+        tap.delegate = self
         addGestureRecognizer(tap)
 
         panel.backgroundColor = .white
@@ -55,6 +57,12 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
         close.setTitleColor(.secondaryLabel, for: .normal)
         close.addAction(UIAction(handler: { [weak self] _ in self?.close() }), for: .touchUpInside)
         let head = UIStackView(arrangedSubviews: [title, UIView(), close])
+        retry.setTitle("重试保存", for: .normal)
+        retry.isHidden = true
+        retry.addAction(UIAction { [weak self] _ in self?.saveOrder() }, for: .touchUpInside)
+        head.insertArrangedSubview(retry, at: 1)
+        head.translatesAutoresizingMaskIntoConstraints = false
+        hint.translatesAutoresizingMaskIntoConstraints = false
         head.axis = .horizontal
 
         hint.text = "长按条目拖到另一条上，交换排名"
@@ -77,7 +85,7 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
             panel.leadingAnchor.constraint(equalTo: leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: trailingAnchor),
             panel.bottomAnchor.constraint(equalTo: bottomAnchor),
-            panel.heightAnchor.constraint(equalToConstant: UIScreen.main.bounds.height * 0.62),
+            panel.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.62),
             head.topAnchor.constraint(equalTo: panel.topAnchor, constant: 12),
             head.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 16),
             head.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -12),
@@ -105,6 +113,7 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
     }
 
     func close() {
+        guard !saving else { return }
         stopAutoScroll()
         onClose?()
         UIView.animate(withDuration: 0.2, animations: {
@@ -116,6 +125,7 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
     // MARK: - 拖拽（对齐 onRankLongPress / onRankTouchMove / onRankTouchEnd）
 
     @objc private func dragGesture(_ g: UILongPressGestureRecognizer) {
+        guard !saving, retry.isHidden else { return }
         let loc = g.location(in: self)
         lastTouchY = loc.y
         switch g.state {
@@ -125,10 +135,10 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
             overIndex = p.row
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             if let cell = table.cellForRow(at: p) {
-                dragCellAlpha = cell.alpha
                 let snap = cell.snapshotView(afterScreenUpdates: true)
                 if let snap {
                     snap.frame = cell.convert(cell.bounds, to: self)
+                    grabOffset = loc.y - snap.center.y
                     addSubview(snap)
                     dragSnapshot = snap
                 }
@@ -138,7 +148,7 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
             startAutoScrollIfNeeded()
         case .changed:
             guard let snap = dragSnapshot, dragIndex >= 0 else { return }
-            snap.center.y = loc.y - snap.bounds.height / 2 + 24
+            snap.center.y = loc.y - grabOffset
             // 命中行 → overIndex 高亮（对齐 updateOverFromTouch）
             let tp = table.convert(loc, from: self)
             if let p = table.indexPathForRow(at: tp), p.row != overIndex {
@@ -148,11 +158,11 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
             }
             startAutoScrollIfNeeded()
         default:
-            endDrag()
+            endDrag(apply: g.state == .ended)
         }
     }
 
-    private func endDrag() {
+    private func endDrag(apply: Bool) {
         guard dragIndex >= 0 else { return }
         stopAutoScroll()
         dragSnapshot?.removeFromSuperview()
@@ -162,11 +172,40 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate {
         dragIndex = -1
         overIndex = -1
         table.reloadData()
-        guard to >= 0, to != from, from < foods.count, to < foods.count else { return }
+        guard apply, to >= 0, to != from, from < foods.count, to < foods.count else { return }
         // 交换（对齐 onRankTouchEnd：list[from] ↔ list[to]）
         foods.swapAt(from, to)
         table.reloadData()
-        onApplyRank?(foods)
+        saveOrder()
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        touch.view === self
+    }
+
+    private func saveOrder() {
+        guard !saving, let onApplyRank else { return }
+        saving = true
+        table.isUserInteractionEnabled = false
+        retry.isEnabled = false
+        hint.text = "保存中…"
+        Task {
+            defer { saving = false; table.isUserInteractionEnabled = true; retry.isEnabled = true }
+            do {
+                try await onApplyRank(foods)
+                for index in foods.indices {
+                    var ranks = foods[index]["category_rank"] as? [String: Any] ?? [:]
+                    ranks[category] = index + 1
+                    foods[index]["category_rank"] = ranks
+                }
+                retry.isHidden = true
+                hint.text = "已保存；长按交换排名"
+            } catch {
+                retry.isHidden = false
+                hint.text = "排名未全部保存，请重试"
+                Toast.show(error.localizedDescription, self)
+            }
+        }
     }
 
     private func highlightOver() {
@@ -284,6 +323,8 @@ private final class RankCell: UITableViewCell {
     required init?(coder: NSCoder) { fatalError() }
 
     func bind(index: Int, food: [String: Any]) {
+        contentView.alpha = 1
+        layer.borderWidth = 0
         noLabel.text = "\(index + 1)"
         let n = food["name"] as? String ?? ""
         nameLabel.text = n.isEmpty ? "未命名" : n
@@ -293,7 +334,6 @@ private final class RankCell: UITableViewCell {
         metaLabel.text = meta.joined(separator: " · ")
         metaLabel.isHidden = meta.isEmpty
         let path = food["image_path"] as? String
-        if path == nil { imgView.image = UIImage(systemName: "photo") }
-        else { ImageLoader.shared.load(API.imageUrl(path), into: imgView) }
+        ImageLoader.shared.load(API.imageUrl(path), into: imgView)
     }
 }

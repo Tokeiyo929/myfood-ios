@@ -5,7 +5,7 @@ on:
     branches: [master]
     paths:
       - "ios/**"
-      - "www/**"
+      - "tests/**"
       - ".github/workflows/build-ios.yml"
   workflow_dispatch:
 
@@ -71,87 +71,24 @@ jobs:
             exit 1
           fi
 
+      - name: Core regression tests (isolated)
+        run: |
+          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
+          /tmp/myfood-core-tests
+          bash tests/test_simulator_runner.sh
+          python3 -m unittest discover -s tests -p 'test_*.py'
+
       - name: Launch on simulator and smoke-tour
         run: |
+          set -euo pipefail
           UDID=${{ steps.sim.outputs.udid }}
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
-          {
-            echo "== clean install =="
-            xcrun simctl terminate "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
-            xcrun simctl uninstall "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
-            xcrun simctl install "$UDID" ios/App/build/Build/Products/Debug-iphonesimulator/App.app
-            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
-            echo "APPC=$APPC"
-            mkdir -p smoke
-            rm -f "$APPC/tmp/smoke/"now-* "$APPC/tmp/smoke/"ack-* 2>/dev/null || true
-            echo "== console launch (marker/ack handshake; app exits after tour) =="
-            xcrun simctl launch --console "$UDID" com.tokeiyo929.myfood -autoSmoke > smoke-console.txt 2>&1 &
-            CPID=$!
-            # app 写 now-XX → runner 截屏写 ack-XX → app 走下一步；done.txt 结束
-            for i in $(seq 1 120); do
-              for n in 01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings; do
-                if [ -f "$APPC/tmp/smoke/now-$n" ] && [ ! -f "smoke/$n.png" ]; then
-                  sleep 1
-                  if xcrun simctl io "$UDID" screenshot "smoke/$n.png" 2>/dev/null; then
-                    : > "$APPC/tmp/smoke/ack-$n" 2>/dev/null || true
-                    echo "captured $n at ~${i}s"
-                  else
-                    echo "screenshot $n FAILED (will retry)"
-                  fi
-                fi
-              done
-              if [ -f "$APPC/tmp/smoke/done.txt" ]; then echo "tour done after ~${i}s"; break; fi
-              if ! kill -0 "$CPID" 2>/dev/null; then echo "app exited early at ~${i}s"; break; fi
-              sleep 1
-            done
-            kill "$CPID" 2>/dev/null || true
-            wait "$CPID" 2>/dev/null || true
-            echo "-- console output --"
-            head -80 smoke-console.txt || true
-            echo "== tmp/smoke listing =="
-            ls -la "$APPC/tmp/smoke/" 2>&1 || true
-            echo "== screenshots =="
-            ls -la smoke/ || true
-          } > smoke-debug.txt 2>&1 || true
-          cat smoke-debug.txt || true
-          cp "$APPC/tmp/smoke/"smoke-log.txt smoke/ 2>/dev/null || true
-          echo "== crash reports =="
-          mkdir -p crashlogs
-          cp ~/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || echo "no crash reports (host)"
-          cp ~/Library/Logs/DiagnosticReports/*pp-* crashlogs/ 2>/dev/null || true
-          cp crashlogs/* smoke/ 2>/dev/null || true
-          ls -lh smoke/ || true
+          bash tests/run_simulator_tests.sh "$UDID" smoke > smoke-debug.txt 2>&1
 
-      - name: Run in-app self tests (-autoTest)
-        run: |
-          UDID=${{ steps.sim.outputs.udid }}
-          {
-            echo "== auto test =="
-            xcrun simctl terminate "$UDID" com.tokeiyo929.myfood 2>/dev/null || true
-            APPC=$(xcrun simctl get_app_container "$UDID" com.tokeiyo929.myfood data 2>&1) || true
-            rm -f "$APPC/tmp/autotest/result.txt" "$APPC/tmp/autotest/done.txt" 2>/dev/null || true
-            xcrun simctl launch --console "$UDID" com.tokeiyo929.myfood -autoTest > autotest-console.txt 2>&1 &
-            APID=$!
-            for i in $(seq 1 180); do
-              if [ -f "$APPC/tmp/autotest/done.txt" ]; then echo "auto test done after ~${i}s"; break; fi
-              if ! kill -0 "$APID" 2>/dev/null; then echo "app exited early at ~${i}s"; break; fi
-              sleep 1
-            done
-            kill "$APID" 2>/dev/null || true
-            wait "$APID" 2>/dev/null || true
-            echo "-- result.txt --"
-            cat "$APPC/tmp/autotest/result.txt" 2>&1 || echo "result.txt MISSING"
-            echo "-- console tail --"
-            tail -20 autotest-console.txt || true
-          } > auto-test.txt 2>&1 || true
-          cat auto-test.txt
-          # 有 FAIL 行或没跑出结果都算失败
-          if grep -q "^FAIL" auto-test.txt || ! grep -q "^PASS" auto-test.txt; then
-            echo "::error::auto test failed (见 auto-test.txt)"
-            exit 1
-          fi
+      - name: Run in-app self tests (-autoTest, isolated)
+        run: bash tests/run_simulator_tests.sh "${{ steps.sim.outputs.udid }}" autotest > auto-test.txt 2>&1
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
@@ -160,6 +97,13 @@ jobs:
           path: myfood-unsigned.ipa
           if-no-files-found: error
 
+      - name: Collect simulator crash reports
+        if: always()
+        run: |
+          mkdir -p crashlogs
+          cp "$HOME"/Library/Logs/DiagnosticReports/*yfood* crashlogs/ 2>/dev/null || true
+          cp "$HOME"/Library/Logs/DiagnosticReports/App-* crashlogs/ 2>/dev/null || true
+
       - name: Upload smoke screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -167,15 +111,17 @@ jobs:
           name: smoke-screenshots
           path: |
             smoke/
+            autotest/
             smoke-debug.txt
             auto-test.txt
+            *-console.txt
+            ios/App/build-sim.log
+            crashlogs/
           if-no-files-found: ignore
 
       - name: Publish IPA to release
         run: |
-          CR=$(ls crashlogs/* 2>/dev/null || true)
-          PNGS=$(ls smoke/*.png 2>/dev/null || true)
-          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt auto-test.txt $CR $PNGS \
+          gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt auto-test.txt smoke/*.png \
             --title "MyFood 未签名 IPA (build ${{ github.run_number }})" \
             --notes "Sideloadly 直接装这个 ipa。功能巡访截图见 smoke-screenshots artifact。" \
             --latest

@@ -25,7 +25,6 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
             table.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             table.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        load()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -35,8 +34,10 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
 
     private func load() {
         Task {
-            days = (try? await API.getTrackDays()) ?? []
-            DispatchQueue.main.async { self.table.reloadData() }
+            do {
+                days = try await API.getTrackDays()
+                table.reloadData()
+            } catch { Toast.show(error.localizedDescription, view) }
         }
     }
 
@@ -46,6 +47,7 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "dcell") ?? UITableViewCell(style: .value1, reuseIdentifier: "dcell")
+        cell.accessoryType = .none
         if days.isEmpty {
             cell.textLabel?.text = "还没有轨迹记录"
             cell.detailTextLabel?.text = "回上一页点「开始记录」"

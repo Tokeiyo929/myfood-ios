@@ -1,126 +1,97 @@
 import UIKit
 
-// CI 冒烟巡访：launch argument "-autoSmoke" 时自动遍历各页。
-// 截图由 runner 端 simctl io screenshot 完成（app 内自截会偶发黑屏）：
-// 本类切到目标页后写 marker(now-XX)，等 runner 截完回写 ack(ack-XX) 再走下一步。
+// runner 截图并回写 ack，页面就绪与截图确认均有超时断言。
 enum SmokeTour {
+    #if DEBUG
     static let enabled = ProcessInfo.processInfo.arguments.contains("-autoSmoke")
+    #else
+    static let enabled = false
+    #endif
     private static var started = false
+    private static let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("smoke")
 
-    // 无条件诊断（viewDidAppear 触发一次，记录实际收到的参数）
-    static func debugNote(_ line: String) { log(line) }
-
+    @MainActor
     static func start() {
         guard enabled, !started else { return }
         started = true
-        log("boot")
-        Task { @MainActor in
-            await tour()
-        }
-    }
-
-    // MARK: - 巡访序列：历史 → 详情 → 记录 → 地图(中国/欧洲/排行榜) → 轨迹 → 设置
-    @MainActor
-    private static func tour() async {
-        guard let tab = keyTab() else { log("no key tab"); finish(); return }
-        let nav0 = tab.viewControllers?[0] as? UINavigationController
-
-        tab.selectedIndex = 0                                       // 历史
-        await pause(8.0)                                            // 等后端数据（首请求慢）
-        await shot("01-history")
-        (nav0?.topViewController as? HistoryViewController)?.smokeOpenFirst()
-        await pause(1.0)
-        await shot("02-detail")
-        nav0?.popToRootViewController(animated: false)
-
-        tab.selectedIndex = 1                                       // 记录
-        await pause(2.0)
-        await shot("03-record")
-
-        tab.selectedIndex = 2                                       // 地图
-        await pause(8.0)                                            // 等类目/地理数据
-        await shot("04-map-china")
-        mapVC()?.smokeSwitchEurope()
-        await pause(4.0)
-        await shot("05-map-europe")
-        mapVC()?.smokeOpenRank()
-        await pause(2.0)
-        await shot("06-rank")
-        mapVC()?.view.subviews.compactMap { $0 as? RankModalView }.forEach { $0.close() }
-
-        tab.selectedIndex = 3                                       // 轨迹
-        await pause(2.0)
-        await shot("07-tracks")
-
-        tab.selectedIndex = 4                                       // 设置
-        await pause(1.5)
-        await shot("08-settings")
-        finish()
-        log("exiting")
-        try? await Task.sleep(nanoseconds: 500_000_000)
-        exit(0) // 仅 -autoSmoke
-    }
-
-    // MARK: - 私有
-
-    // 通知 runner 截屏并等 ack（最多 40s，超时放行不卡巡访）
-    @MainActor
-    private static func shot(_ name: String) async {
-        try? FileManager.default.createDirectory(at: smokeDir, withIntermediateDirectories: true)
-        try? "1".write(to: smokeDir.appendingPathComponent("now-\(name)"), atomically: true, encoding: .utf8)
-        for _ in 0..<80 {
-            if (try? String(contentsOf: smokeDir.appendingPathComponent("ack-\(name)"), encoding: .utf8)) != nil {
-                log("shot \(name) acked")
-                return
+        Task {
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try await tour()
+                try "RESULT: ALL PASS\n".write(to: dir.appendingPathComponent("result.txt"), atomically: true, encoding: .utf8)
+                try "PASS".write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+                exit(0)
+            } catch {
+                try? "FAIL \(error)\n".write(to: dir.appendingPathComponent("result.txt"), atomically: true, encoding: .utf8)
+                try? "FAIL".write(to: dir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
+                exit(1)
             }
-            try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        log("shot \(name) ack TIMEOUT")
     }
 
     @MainActor
-    private static func pause(_ seconds: Double) async {
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    private static func tour() async throws {
+        guard let tab = keyTab(), let nav = tab.viewControllers?[0] as? UINavigationController,
+              let history = nav.viewControllers.first as? HistoryViewController else { throw APIError(message: "历史页不存在") }
+        tab.selectedIndex = 0
+        try await waitUntil("历史加载") { history.loaded }
+        try await shot("01-history")
+        history.smokeOpenFirst()
+        try await waitUntil("详情加载") { (nav.topViewController as? DetailViewController)?.loaded == true }
+        try await shot("02-detail")
+        nav.popToRootViewController(animated: false)
+
+        tab.selectedIndex = 1
+        let record = (tab.viewControllers?[1] as? UINavigationController)?.topViewController as? RecordViewController
+        try await waitUntil("记录加载") { record?.loaded == true }
+        try await shot("03-record")
+
+        tab.selectedIndex = 2
+        guard let map = (tab.viewControllers?[2] as? UINavigationController)?.topViewController as? FoodMapViewController else {
+            throw APIError(message: "美食地图不存在")
+        }
+        try await waitUntil("地图加载") { map.mapReady }
+        try await shot("04-map-china")
+        map.smokeSwitchEurope()
+        try await shot("05-map-europe")
+        map.smokeOpenRank()
+        try await waitUntil("排行打开") { map.view.subviews.contains { $0 is RankModalView } }
+        try await shot("06-rank")
+        map.view.subviews.compactMap { $0 as? RankModalView }.forEach { $0.close() }
+
+        tab.selectedIndex = 3
+        let track = (tab.viewControllers?[3] as? UINavigationController)?.topViewController as? MapViewController
+        try await waitUntil("轨迹加载") { track?.loaded == true }
+        try await shot("07-tracks")
+        tab.selectedIndex = 4
+        guard (tab.selectedViewController as? UINavigationController)?.topViewController is SettingsViewController else {
+            throw APIError(message: "设置页不存在")
+        }
+        try await shot("08-settings")
     }
 
-    private static var smokeDir: URL {
-        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("smoke")
+    @MainActor
+    private static func waitUntil(_ name: String, condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(40)
+        while !condition() {
+            guard Date() < deadline else { throw APIError(message: "\(name)超时") }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
     }
 
+    @MainActor
+    private static func shot(_ name: String) async throws {
+        // 等布局提交后再通知外部截屏。
+        await Task.yield()
+        try "1".write(to: dir.appendingPathComponent("now-\(name)"), atomically: true, encoding: .utf8)
+        try await waitUntil("截图\(name)") { FileManager.default.fileExists(atPath: dir.appendingPathComponent("ack-\(name)").path) }
+    }
+
+    @MainActor
     private static func keyTab() -> MainTabBarController? {
-        keyWindow()?.rootViewController as? MainTabBarController
-    }
-
-    private static func mapVC() -> FoodMapViewController? {
-        (keyTab()?.viewControllers?[2] as? UINavigationController)?
-            .viewControllers.first as? FoodMapViewController
-    }
-
-    // 平铺查找 keyWindow（避开 flatMap 类型推断坑）
-    private static func keyWindow() -> UIWindow? {
-        for scene in UIApplication.shared.connectedScenes {
-            guard let ws = scene as? UIWindowScene else { continue }
-            for w in ws.windows where w.isKeyWindow { return w }
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+            if let tab = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController as? MainTabBarController { return tab }
         }
         return nil
-    }
-
-    private static func finish() {
-        try? FileManager.default.createDirectory(at: smokeDir, withIntermediateDirectories: true)
-        do {
-            try "done".write(to: smokeDir.appendingPathComponent("done.txt"), atomically: true, encoding: .utf8)
-            log("finish ok")
-        } catch { log("finish failed: \(error)") }
-    }
-
-    // 诊断日志：写进 tmp/smoke/smoke-log.txt，随 CI artifact 上传
-    private static func log(_ line: String) {
-        try? FileManager.default.createDirectory(at: smokeDir, withIntermediateDirectories: true)
-        let f = smokeDir.appendingPathComponent("smoke-log.txt")
-        if let h = try? String(contentsOf: f, encoding: .utf8) {
-            try? (h + line + "\n").write(to: f, atomically: true, encoding: .utf8)
-        } else {
-            try? (line + "\n").write(to: f, atomically: true, encoding: .utf8)
-        }
     }
 }
