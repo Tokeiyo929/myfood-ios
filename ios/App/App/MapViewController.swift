@@ -1,11 +1,10 @@
 import UIKit
 import MapKit
 
-// 地图 tab：MapKit + 轨迹 + 开始/停止记录
+// 轨迹 tab：MapKit + 默认自动记录（App 启动即记录，无需手动开关）
 class MapViewController: UIViewController, MKMapViewDelegate {
     private var mapView: MKMapView!
     private var statusLabel: UILabel!
-    private var toggleBtn: UIButton!
     private var infoLabel: UILabel!
     var viewDay: String?
     private(set) var loaded = false
@@ -22,11 +21,19 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         // 轨迹 tab 根页：右上角进每日记录列表（二级页）；按天进入的历史页不重复加
         if viewDay == nil {
             navigationItem.rightBarButtonItem = UIBarButtonItem(title: "每日记录", style: .plain, target: self, action: #selector(openDayList))
+            // 定位被拒绝时状态条可点按重新发起（重新拉系统授权）
+            statusLabel.isUserInteractionEnabled = true
+            statusLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(retryTracking)))
         }
     }
 
     @objc private func openDayList() {
         navigationController?.pushViewController(TrackDaysViewController(), animated: true)
+    }
+
+    @objc private func retryTracking() {
+        TrackRecorder.shared.start()
+        refreshStatus()
     }
 
     private func buildUI() {
@@ -45,15 +52,6 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         mapView.addSubview(statusLabel)
 
-        toggleBtn = UIButton(type: .system)
-        toggleBtn.backgroundColor = Theme.primary
-        toggleBtn.setTitleColor(.white, for: .normal)
-        toggleBtn.titleLabel?.font = .boldSystemFont(ofSize: 16)
-        toggleBtn.layer.cornerRadius = 10
-        toggleBtn.addTarget(self, action: #selector(toggleTracking), for: .touchUpInside)
-        toggleBtn.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(toggleBtn)
-
         infoLabel = UILabel()
         infoLabel.font = .systemFont(ofSize: 13)
         infoLabel.textColor = .secondaryLabel
@@ -65,30 +63,26 @@ class MapViewController: UIViewController, MKMapViewDelegate {
             mapView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             mapView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            mapView.bottomAnchor.constraint(equalTo: toggleBtn.topAnchor, constant: -12),
+            mapView.bottomAnchor.constraint(equalTo: infoLabel.topAnchor, constant: -8),
             statusLabel.leadingAnchor.constraint(equalTo: mapView.leadingAnchor, constant: 8),
             statusLabel.bottomAnchor.constraint(equalTo: mapView.bottomAnchor, constant: -8),
-            toggleBtn.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            toggleBtn.widthAnchor.constraint(equalToConstant: 180),
-            toggleBtn.heightAnchor.constraint(equalToConstant: 44),
-            toggleBtn.bottomAnchor.constraint(equalTo: infoLabel.topAnchor, constant: -8),
             infoLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             infoLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
         ])
-        updateToggle()
+        refreshStatus()
         statusLabel.text = "加载中…"
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        updateToggle()
+        refreshStatus()
         loadTrack()
         guard viewDay == nil else { return }
         TrackRecorder.shared.onNewPoint = { [weak self] lat, lng in
             self?.addPointToLine(lat: lat, lng: lng)
-            self?.statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
+            self?.refreshStatus()
         }
-        TrackRecorder.shared.onStateChange = { [weak self] in self?.updateToggle() }
+        TrackRecorder.shared.onStateChange = { [weak self] in self?.refreshStatus() }
         TrackRecorder.shared.onError = { [weak self] message in Toast.show(message, self?.view) }
     }
 
@@ -100,25 +94,14 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         TrackRecorder.shared.onError = nil
     }
 
-    private func updateToggle() {
-        toggleBtn.setTitle(TrackRecorder.shared.isTracking ? "停止记录" : "开始记录", for: .normal)
-        infoLabel.text = TrackRecorder.shared.isTracking ? "记录中…(锁屏也持续)" : ""
-    }
-
-    @objc private func toggleTracking() {
+    // 默认记录无手动开关：记录中显示点数；未记录（如定位被拒）提示点按开启
+    private func refreshStatus() {
+        guard viewDay == nil else { return }
         if TrackRecorder.shared.isTracking {
-            toggleBtn.isEnabled = false
-            Task {
-                defer { toggleBtn.isEnabled = true }
-                do {
-                    try await TrackRecorder.shared.stop()
-                    loadTrack()
-                } catch { Toast.show("上传失败，轨迹点已保留；开始记录后重试", view) }
-            }
+            statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
         } else {
-            TrackRecorder.shared.start()
+            statusLabel.text = "未记录 · 点按开启"
         }
-        updateToggle()
     }
 
     private func loadTrack() {

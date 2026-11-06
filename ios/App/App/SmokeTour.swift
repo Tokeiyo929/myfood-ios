@@ -42,6 +42,11 @@ enum SmokeTour {
         try await shot("02-detail")
         nav.popToRootViewController(animated: false)
 
+        // 快速建档全流程（上传+定位兜底+提交），新记录应出现在列表最前
+        history.smokeQuickAdd()
+        try await waitUntil("记录保存") { history.smokeAddState == "saved" }
+        try await shot("03-record")
+
         tab.selectedIndex = 0
         guard let map = (tab.viewControllers?[0] as? UINavigationController)?.topViewController as? FoodMapViewController else {
             throw APIError(message: "美食地图不存在")

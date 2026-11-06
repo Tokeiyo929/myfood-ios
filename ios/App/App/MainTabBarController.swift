@@ -1,8 +1,7 @@
 import UIKit
 
-// 五 tab：地图 | 轨迹 | 历史(中心凸起,默认) | 设置 | 更多(占位)
+// 五 tab：地图 | 轨迹 | 历史(默认) | 设置 | 更多(占位)；轨迹默认自动记录，无需手动开启
 class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
-    private let centerButton = UIButton(type: .system)
     override func viewDidLoad() {
         super.viewDidLoad()
         delegate = self
@@ -20,32 +19,15 @@ class MainTabBarController: UITabBarController, UITabBarControllerDelegate {
         viewControllers = [map, tracks, history, settings, placeholder].map { UINavigationController(rootViewController: $0) }
         tabBar.tintColor = Theme.primary
         selectedIndex = AutoTest.enabled ? 4 : 2 // 自测先打开无需请求数据的占位页。
-        var config = UIButton.Configuration.plain()
-        config.title = "历史"
-        config.image = UIImage(systemName: "clock")
-        config.imagePlacement = .top
-        config.imagePadding = 3
-        config.baseForegroundColor = Theme.primary
-        centerButton.configuration = config
-        centerButton.backgroundColor = .systemBackground
-        centerButton.layer.cornerRadius = 16
-        centerButton.accessibilityLabel = "历史"
-        centerButton.addAction(UIAction { [weak self] _ in self?.selectedIndex = 2 }, for: .touchUpInside)
-        view.addSubview(centerButton)
+        // 轨迹默认记录：启动即自动开始（测试模式跳过，避免首启弹窗干扰冒烟截图）
+        if !SmokeTour.enabled, !AutoTest.enabled {
+            TrackRecorder.shared.start()
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         SmokeTour.start() // CI 冒烟巡访（仅 -autoSmoke 时生效，内部有防重入）
         AutoTest.start() // CI 自测（仅 -autoTest 时生效，内部有防重入）
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        let width = tabBar.bounds.width / CGFloat(viewControllers?.count ?? 5)
-        let height = tabBar.bounds.height - tabBar.safeAreaInsets.bottom
-        centerButton.frame = CGRect(x: tabBar.frame.midX - width / 2, y: tabBar.frame.minY - 14, width: width, height: height + 14)
-        centerButton.isHidden = tabBar.isHidden
-        view.bringSubviewToFront(centerButton)
     }
 }

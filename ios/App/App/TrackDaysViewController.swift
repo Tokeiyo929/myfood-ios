@@ -50,7 +50,7 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
         cell.accessoryType = .none
         if days.isEmpty {
             cell.textLabel?.text = "还没有轨迹记录"
-            cell.detailTextLabel?.text = "回上一页点「开始记录」"
+            cell.detailTextLabel?.text = "轨迹在 App 启动后自动记录"
             return cell
         }
         let d = days[indexPath.row]

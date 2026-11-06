@@ -43,7 +43,7 @@ class SettingsViewController: UIViewController {
         }
 
         stack.addArrangedSubview(card("后端", BASE_URL))
-        stack.addArrangedSubview(card("定位说明", "开始记录后请在系统提示中选择「允许」并设为「始终允许」，锁屏也能持续记录轨迹"))
+        stack.addArrangedSubview(card("定位说明", "轨迹默认自动记录：启动后请在系统弹窗中选择「允许」，并设为「始终允许」可锁屏持续记录"))
 
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),

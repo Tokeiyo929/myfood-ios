@@ -3,10 +3,13 @@ set -euo pipefail
 udid=$1
 mode=$2
 case "$mode" in
-  smoke) argument=-autoSmoke; names="01-history 02-detail 04-map-china 05-map-europe 06-rank 07-tracks 08-settings" ;;
+  smoke) argument=-autoSmoke; names="01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings" ;;
   autotest) argument=-autoTest; names= ;;
   *) echo "Unknown test mode: $mode" >&2; exit 1 ;;
 esac
+# 预授定位权限+模拟坐标（上海），让冒烟的快速建档走完整定位分支而不弹系统窗
+xcrun simctl privacy "$udid" grant location com.tokeiyo929.myfood 2>/dev/null || true
+xcrun simctl location "$udid" set "31.2304,121.4737" 2>/dev/null || true
 container=$(xcrun simctl get_app_container "$udid" com.tokeiyo929.myfood data)
 directory="$container/tmp/$mode"
 mkdir -p "$directory" "$mode"

@@ -145,7 +145,9 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
             dishScroll.trailingAnchor.constraint(equalTo: dishStack.trailingAnchor),
             dishScroll.bottomAnchor.constraint(equalTo: dishStack.bottomAnchor),
             dishScroll.widthAnchor.constraint(equalTo: dishPanel.widthAnchor, constant: -24),
-            dishScroll.heightAnchor.constraint(equalToConstant: 180),
+            dishScroll.heightAnchor.constraint(equalToConstant: 240),
+            // 行宽 = 滚动区可视宽（否则 stack 按标题收缩，列表很窄）
+            dishStack.widthAnchor.constraint(equalTo: dishScroll.frameLayoutGuide.widthAnchor),
         ])
         dishPanel.addSubview(dishTitleLabel)
         NSLayoutConstraint.activate([
@@ -331,7 +333,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         contentView.frame = CGRect(x: 0, y: 0, width: vw, height: vh)
     }
 
-    // 投影参数（纯函数，便于自测）：经度先乘 cos(midLat) 再 fit 视窗，图形居中
+    // 投影参数（纯函数，便于自测）：经度先乘 cos(midLat) 再 fit 视窗；水平居中、垂直顶部对齐（避免上方大片空白）
     static func projectParams(vw: CGFloat, vh: CGFloat, minLon: Double, maxLon: Double, minLat: Double, maxLat: Double) -> (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double) {
         let midLat = (minLat + maxLat) / 2
         let cosLat = cos(midLat * .pi / 180)
@@ -339,8 +341,7 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         let dLat = maxLat - minLat
         let k = min(Double(vw) / dLon, Double(vh) / dLat)
         let offsetX = (Double(vw) - dLon * k) / 2
-        let offsetY = (Double(vh) - dLat * k) / 2
-        return (k, offsetX, offsetY, minLon, maxLat, cosLat)
+        return (k, offsetX, 0, minLon, maxLat, cosLat)
     }
 
     static func projectPoint(_ lonlat: CGPoint, params: (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double)) -> CGPoint {
@@ -397,21 +398,38 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         dishTitleLabel.text = "\(province) 的特色美食"
         dishStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for d in dishList {
-            let row = UIButton(type: .system)
-            let tag = d.visited ? " ✓" : " 未解锁"
-            row.setTitle(d.name + tag, for: .normal)
-            row.contentHorizontalAlignment = .left
-            row.titleLabel?.font = .systemFont(ofSize: 14)
-            row.setTitleColor(d.visited ? .label : .tertiaryLabel, for: .normal)
-            row.contentEdgeInsets = UIEdgeInsets(top: 6, left: 8, bottom: 6, right: 8)
-            row.backgroundColor = UIColor(white: 0.96, alpha: 1)
-            row.layer.cornerRadius = 8
-            row.addAction(UIAction(handler: { [weak self] _ in
-                self?.openCatModal(name: d.name)
-            }), for: .touchUpInside)
-            dishStack.addArrangedSubview(row)
+            dishStack.addArrangedSubview(makeDishRow(d))
         }
         dishPanel.isHidden = false
+    }
+
+    // 对齐小程序 .dish-item：全宽行，菜名居左、状态标签居右
+    private func makeDishRow(_ d: (name: String, visited: Bool)) -> UIControl {
+        let row = UIControl()
+        row.backgroundColor = d.visited ? .white : UIColor(white: 0.96, alpha: 1)
+        row.layer.cornerRadius = 8
+        let nameLabel = UILabel()
+        nameLabel.text = d.name
+        nameLabel.font = .systemFont(ofSize: 14)
+        nameLabel.textColor = d.visited ? .label : UIColor(white: 0.73, alpha: 1)
+        let tagLabel = UILabel()
+        tagLabel.text = d.visited ? "✓" : "未解锁"
+        tagLabel.font = .systemFont(ofSize: 12)
+        tagLabel.textColor = d.visited ? Theme.excellent : UIColor(white: 0.73, alpha: 1)
+        let content = UIStackView(arrangedSubviews: [nameLabel, tagLabel])
+        content.axis = .horizontal
+        content.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: row.topAnchor, constant: 10),
+            content.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -10),
+            content.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 12),
+            content.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+        ])
+        row.addAction(UIAction(handler: { [weak self] _ in
+            self?.openCatModal(name: d.name)
+        }), for: .touchUpInside)
+        return row
     }
 
     // MARK: - 排行榜弹窗（对齐 rank modal）

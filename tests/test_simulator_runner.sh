@@ -19,7 +19,7 @@ case "$2" in
       partial) printf 'PASS first\n' > "$directory/result.txt"; exit 0 ;;
       timeout) exec /bin/sleep 60 ;;
       smoke-pass)
-        for name in 01-history 02-detail 04-map-china 05-map-europe 06-rank 07-tracks 08-settings; do
+        for name in 01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings; do
           : > "$directory/now-$name"
         done
         for ((i=0; i<1000; i++)); do

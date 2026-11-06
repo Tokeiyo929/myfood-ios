@@ -80,6 +80,8 @@ enum TestFixture {
         if url.path == "/api/categories" { return (200, ["items": [["name": "北京烤鸭", "parentcategories": "北京市"]]]) }
         if url.path == "/api/tracks/days" { return (200, ["days": []]) }
         if url.path == "/api/tracks" { return (200, method == "GET" ? ["points": []] : ["ok": true]) }
+        // multipart 上传不做 JSON 解析，直接返回固定路径
+        if url.path == "/api/upload", method == "POST" { return (200, ["path": "myfood/smoke-test.jpg", "metadata": [:]]) }
         if url.path == "/api/foods", method == "GET" {
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
             let page = Int(query.first { $0.name == "page" }!.value!)!
@@ -111,6 +113,10 @@ enum TestFixture {
         if url.path == "/api/foods", method == "POST" {
             let id = (foods.compactMap { $0["id"] as? Int }.max() ?? 0) + 1
             body["id"] = id
+            // 镜像服务端：INSERT 时写入当天 modify_at，新记录排在列表最前
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            body["modify_at"] = [fmt.string(from: Date())]
             foods.append(body)
             return (200, ["id": id])
         }

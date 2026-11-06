@@ -107,6 +107,8 @@ final class LocationOnce: NSObject, CLLocationManagerDelegate {
                 locator.manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
                 if Task.isCancelled { locator.finish(nil) }
                 else { locator.authorize() }
+                // 硬超时兜底：授权弹窗被转场吞掉、系统回调丢失时，定位绝不能卡住保存流程
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak locator] in locator?.finish(nil) }
             }
         }, onCancel: { Task { @MainActor in locator.finish(nil) } })
     }

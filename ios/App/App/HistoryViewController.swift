@@ -128,7 +128,13 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
         picker.dismiss(animated: true)
         guard let img = info[.originalImage] as? UIImage else { return }
+        quickAdd(image: img)
+    }
+
+    // 快速建档：上传与定位并行（定位有 10s 超时兜底，绝不阻塞保存，对齐小程序 getLocation fail 继续保存）
+    private func quickAdd(image img: UIImage) {
         Toast.show("上传中…", view)
+        smokeAddState = "running"
         Task {
             do {
                 // 缩放到最大边长 + JPEG 压缩（对齐小程序 compressAndUpload 规则）
@@ -136,10 +142,13 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
                 self.config = config
                 guard let jpeg = img.resized(maxDimension: CGFloat(config.imageMaxDimension))
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
-                let upload = try await API.uploadImage(jpegData: jpeg)
+                async let uploadTask = API.uploadImage(jpegData: jpeg)
+                async let locTask = LocationOnce.fetch()
+                let upload = try await uploadTask
+                let loc = await locTask
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = nowTakenAt()
-                if let loc = await LocationOnce.fetch() {
+                if let loc {
                     meta["latitude"] = loc.lat
                     meta["longitude"] = loc.lng
                 }
@@ -158,10 +167,19 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
                 if !records.isEmpty { // 新记录按修改日期倒序排在最前，回到顶部直接看到
                     table.scrollToRow(at: IndexPath(row: 0, section: 0), at: .top, animated: false)
                 }
+                smokeAddState = "saved"
             } catch {
+                smokeAddState = "failed: \(error.localizedDescription)"
                 DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
             }
         }
+    }
+
+    // 冒烟巡访用：不经过相册 UI，直接走 quickAdd 全流程（fixture 服务端）
+    private(set) var smokeAddState = "idle"
+    func smokeQuickAdd() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40))
+        quickAdd(image: renderer.image { UIColor.systemRed.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 40, height: 40)) })
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true) }
