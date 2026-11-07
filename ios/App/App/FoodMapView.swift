@@ -453,7 +453,7 @@ struct RankSheetView: View {
                         .opacity(dragFrom == idx ? 0.5 : 1)
                     }
                     .onMove { from, to in
-                        foods.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+                        foods.move(fromOffsets: from, toOffset: to)
                         Task { await apply() }
                     }
                     .onDelete { _ in }
