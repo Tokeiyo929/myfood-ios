@@ -133,7 +133,7 @@ enum OfflineStore {
 
     private static func records() -> [Int: [String: Any]] {
         if let recordsCache { return recordsCache }
-        let raw = loadJSON(name: "records.json") as? [String: [String: Any]] ?? [:]
+        let raw = loadJSONUnlocked(name: "records.json") as? [String: [String: Any]] ?? [:]
         var out: [Int: [String: Any]] = [:]
         for (key, value) in raw {
             guard let id = Int(key) else { continue }

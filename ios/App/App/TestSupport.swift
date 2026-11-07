@@ -241,54 +241,50 @@ enum CoreRegression {
         report(TestFixture.foods.count == 80, "隔离测试记录清理完成")
 
         // —— 离线能力 ——
-        func mark(_ s: String) { print("MARK \(s)") } // 定位卡死点用
-        OfflineStore.wipeAll(); mark("wipe1")
+        OfflineStore.wipeAll()
         report(isNetworkError(URLError(.notConnectedToInternet)), "断网错误归类为可离线")
         report(!isNetworkError(APIError(message: "服务器配置无效")), "业务错误不视为可离线")
         let older = ["id": 7, "name": "旧记录", "modify_at": ["2026-11-01"]] as [String: Any]
         let newer = ["id": 9, "name": "新记录", "modify_at": ["2026-11-03"]] as [String: Any]
-        mark("today前")
-        let today = OfflineStore.todayString(); mark("today=\(today)")
-        let localNew = ["id": -1, "name": "离线新档", "modify_at": [today]] as [String: Any]
-        mark("merge前")
-        OfflineStore.mergeRecords([older, newer, localNew]); mark("merge后")
+        let localNew = ["id": -1, "name": "离线新档", "modify_at": [OfflineStore.todayString()]] as [String: Any]
+        OfflineStore.mergeRecords([older, newer, localNew])
         report(OfflineStore.cachedRecords().map { $0["id"] as! Int } == [-1, 9, 7], "缓存排序：本地新档置顶再按修改日期倒序")
         report(OfflineStore.searchRecords("离线").map { $0["id"] as! Int } == [-1], "本地搜索命中名称")
         report(OfflineStore.record(id: 7)?["name"] as? String == "旧记录", "按 id 读缓存")
-        OfflineStore.removeRecord(id: 7); mark("remove后")
+        OfflineStore.removeRecord(id: 7)
         report(OfflineStore.record(id: 7) == nil, "删除缓存记录")
-        OfflineStore.enqueue(.create(record: ["name": "x", "client_key": "k1"], clientKey: "k1", localId: -1, localImage: nil)); mark("enqueue1")
-        OfflineStore.enqueue(.patchLocal(clientKey: "k1", fields: ["name": "y"])); mark("enqueue2")
-        OfflineStore.resolvePending(clientKey: "k1", serverId: 42); mark("resolve后")
+        OfflineStore.enqueue(.create(record: ["name": "x", "client_key": "k1"], clientKey: "k1", localId: -1, localImage: nil))
+        OfflineStore.enqueue(.patchLocal(clientKey: "k1", fields: ["name": "y"]))
+        OfflineStore.resolvePending(clientKey: "k1", serverId: 42)
         let resolved = OfflineStore.pendingMutations()
         report(resolved.count == 2 && resolved[1].serverId == 42 && resolved[1].clientKey == nil, "create 成功后本地 patch 改写为服务端 id")
-        OfflineStore.cancelPendingCreate(clientKey: "k1"); mark("cancel后")
+        OfflineStore.cancelPendingCreate(clientKey: "k1")
         report(OfflineStore.pendingMutations().isEmpty, "撤销本地 create 连带清空")
 
         // AppConfig 断网兜底：先联网一次落盘缓存，再断网应命中缓存；无缓存必须失败
-        AppConfig.shared = nil; mark("load1前")
-        _ = try await AppConfig.load(); mark("load1后")
         AppConfig.shared = nil
-        FixtureProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }; mark("handler断网")
-        let offlineConfig = try await AppConfig.load(); mark("load2后")
+        _ = try await AppConfig.load()
+        AppConfig.shared = nil
+        FixtureProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+        let offlineConfig = try await AppConfig.load()
         report(offlineConfig.flavorScale["default"] == 50, "断网时配置回退磁盘缓存")
         AppConfig.shared = nil
-        OfflineStore.wipeAll(); mark("wipe2")
+        OfflineStore.wipeAll()
         do { _ = try await AppConfig.load(); report(false, "无缓存断网必须失败") }
-        catch { report(isNetworkError(error), "无缓存断网报网络错误") }; mark("load3后")
+        catch { report(isNetworkError(error), "无缓存断网报网络错误") }
 
         // 轨迹待传点持久化：append 落盘，新实例可恢复
-        OfflineStore.wipeAll(); mark("wipe3")
-        let trackQueue = TrackUploadQueue(persistent: true); mark("queue1")
-        trackQueue.append(["lat": 1.0, "lng": 2.0, "ts": 3.0]); mark("append1")
-        let revived = TrackUploadQueue(persistent: true); mark("queue2")
+        OfflineStore.wipeAll()
+        let trackQueue = TrackUploadQueue(persistent: true)
+        trackQueue.append(["lat": 1.0, "lng": 2.0, "ts": 3.0])
+        let revived = TrackUploadQueue(persistent: true)
         report(revived.pending.count == 1 && (revived.pending[0]["lat"] as? Double) == 1.0, "轨迹待传点落盘可恢复")
 
         // 恢复 fixture 与缓存基线
-        OfflineStore.wipeAll(); mark("wipe4")
+        OfflineStore.wipeAll()
         FixtureProtocol.handler = TestFixture.respond
-        AppConfig.shared = nil; mark("load4前")
-        _ = try await AppConfig.load(); mark("load4后")
+        AppConfig.shared = nil
+        _ = try await AppConfig.load()
     }
 }
 #endif
