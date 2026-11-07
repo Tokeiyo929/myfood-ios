@@ -22,6 +22,7 @@ final class HistoryViewModel {
     private var generation = 0
 
     func onSearchChange(_ text: String) {
+        search = text // VM 自包含：直接调用（冒烟/自测）与输入绑定两条路径都生效
         searchTask?.cancel()
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
