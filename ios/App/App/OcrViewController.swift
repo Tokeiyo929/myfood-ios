@@ -17,6 +17,7 @@ final class OcrViewController: UIViewController, UICollectionViewDataSource, UIC
     private var target: Target = .name
     private var strokeMode = false
     private var lastHit: Int?
+    private(set) var recognized = false // Vision 识别完成且有结果（冒烟截图信号）
 
     private let panel = UIView()
     private let statusLabel = UILabel()
@@ -183,6 +184,7 @@ final class OcrViewController: UIViewController, UICollectionViewDataSource, UIC
             return
         }
         chars = items
+        recognized = true
         statusLabel.text = "共\(items.count)个字，按住划选"
         collection.reloadData()
     }

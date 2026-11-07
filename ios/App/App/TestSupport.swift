@@ -56,12 +56,31 @@ enum TestFixture {
     static func install() {
         lock.lock()
         defer { lock.unlock() }
+        // 拟真异构数据：长名/未命名/无图/长评论/多原料/混合偏好，让视觉测试能暴露真实数据下的布局问题
         foods = (1...80).map { id in
-            ["id": id, "name": "测试记录 \(id)", "brand_name": "测试品牌", "price": [12, NSNull()],
-             "categories": ["北京烤鸭"], "category_rank": ["北京烤鸭": id],
-             "ingredients": [["name": "奶油", "amount": 20]], "flavors": [["name": "甜", "level": 75]],
-             "preference": "偏好吃", "comment": ["UTF-8 中文 🍰"], "worth_it": "yes",
-             "image_path": "", "image_metadata": ["taken_at": "2026:11:03 12:00:00"], "modify_at": ["2026-11-03"]]
+            let longName = id % 7 == 0
+            let unnamed = id % 11 == 0
+            let noImage = id % 5 == 0
+            let richComment = id % 4 == 0
+            let manyIngredients = id % 3 == 0
+            let pref: String
+            if id % 9 == 0 { pref = "推荐吃" } else if id % 9 == 5 { pref = "偏难吃" } else { pref = "偏好吃" }
+            let cat = ["北京烤鸭", "四川火锅", "广东早茶", "新疆大盘鸡", "苏式面点"][id % 5]
+            let name = unnamed ? "" : "测试记录 \(id)" + (longName ? "·进口黑巧克力夹心威化饼干超长名称家庭分享装" : "")
+            let comments: [String] = richComment
+                ? ["这家店排队半小时也值，奶油入口即化，甜度刚好不齁，下次带朋友一起来。", "包装很精致，送人也有面子，保质期新鲜。", "第二次回购了，孩子特别爱吃。"]
+                : ["UTF-8 中文 🍰"]
+            let ingredients: [[String: Any]] = manyIngredients
+                ? [["name": "奶油", "amount": 20], ["name": "面粉", "amount": 35], ["name": "鸡蛋", "amount": 15], ["name": "白砂糖", "amount": 12], ["name": "可可粉", "amount": 8], ["name": "乳酪", "amount": 6], ["name": "海盐", "amount": 1]]
+                : [["name": "奶油", "amount": 20]]
+            return ["id": id, "name": name, "brand_name": id % 6 == 0 ? "" : "测试品牌",
+                    "price": id % 8 == 0 ? NSNull() : [12 + id % 40, id % 10 == 0 ? 9.9 : NSNull()],
+                    "categories": [cat], "category_rank": [cat: id],
+                    "ingredients": ingredients, "flavors": [["name": "甜", "level": 75]],
+                    "preference": pref, "comment": comments,
+                    "worth_it": id % 2 == 0 ? "yes" : (id % 3 == 0 ? "no" : ""),
+                    "image_path": noImage ? "" : "myfood/fixture-\(id).jpg",
+                    "image_metadata": ["taken_at": "2026:11:03 12:00:00"], "modify_at": ["2026-11-03"]] as [String: Any]
         }
         requests = []
         FixtureProtocol.responseDelay = { _ in 0 }
@@ -71,7 +90,13 @@ enum TestFixture {
     }
 
     private static func respondQuotes(request: URLRequest, url: URL, method: String) throws -> (Int, Any) {
-        if url.path == "/api/quotes" && method == "GET" { return (200, ["items": [], "total": 0]) }
+        if url.path == "/api/quotes" && method == "GET" {
+            return (200, ["items": [
+                ["id": 501, "text": "山川是不卷收的画卷，行走其间，人便成了笔。", "note": "", "day": "2026-11-06"],
+                ["id": 502, "text": "把日子过成诗，一半烟火，一半清欢。凡事不必太执着，尽人事，安天命。人生的幸福，一半要争，一半要随。争，不是与他人争，而是与困苦抗争；随，不是随波逐流，而是知止而后安。", "note": "", "day": "2026-11-05"],
+                ["id": 503, "text": "唯有美食与爱不可辜负。", "note": "", "day": "2026-11-01"],
+            ], "total": 3])
+        }
         if url.path == "/api/quotes" && method == "POST" { return (201, ["id": 501]) }
         if url.path.hasPrefix("/api/quotes/") && method == "DELETE" { return (200, ["id": 5]) }
         throw APIError(message: "测试端点未实现：\(method) \(url.path)")
@@ -88,9 +113,30 @@ enum TestFixture {
         }
         requests.append(request)
         if url.path == "/api/config" { return (200, config) }
-        if url.path == "/api/categories" { return (200, ["items": [["name": "北京烤鸭", "parentcategories": "北京市"]]]) }
-        if url.path == "/api/tracks/days" { return (200, ["days": []]) }
-        if url.path == "/api/tracks" { return (200, method == "GET" ? ["points": []] : ["ok": true]) }
+        if url.path == "/api/categories" {
+            return (200, ["items": [["name": "北京烤鸭", "parentcategories": "北京市"],
+                                     ["name": "四川火锅", "parentcategories": "四川省"],
+                                     ["name": "广东早茶", "parentcategories": "广东省"],
+                                     ["name": "新疆大盘鸡", "parentcategories": "新疆维吾尔自治区"],
+                                     ["name": "苏式面点", "parentcategories": "江苏省"]]])
+        }
+        if url.path == "/api/tracks/days" {
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            return (200, ["days": [["day": f.string(from: Date()), "points": 160]]])
+        }
+        if url.path == "/api/tracks" && method == "GET" {
+            // 确定性的上海漫步路径：冒烟截图能看到完整折线（并真实走过 GCJ-02 纠偏渲染）
+            var pts: [[String: Any]] = []
+            for i in 0..<160 {
+                let t = Double(i) * 0.09
+                pts.append(["lat": 31.2304 + 0.0035 * sin(t),
+                            "lng": 121.4737 + 0.0045 * (cos(t) * 0.8 + 0.2),
+                            "acc": 8.0,
+                            "ts": 1_799_000_000.0 + Double(i) * 30_000])
+            }
+            return (200, ["points": pts])
+        }
         // multipart 上传不做 JSON 解析，直接返回固定路径
         if url.path == "/api/upload", method == "POST" { return (200, ["path": "myfood/smoke-test.jpg", "metadata": [:]]) }
         if url.path == "/api/foods", method == "GET" {

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a8560"/>
+      <stop offset="1" stop-color="#1d4733"/>
+    </linearGradient>
+    <linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9e5dd"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- 蒸汽 -->
+  <path d="M392 400 C368 356 412 330 390 286" stroke="#cfe6d8" stroke-width="30" fill="none" stroke-linecap="round" opacity="0.95"/>
+  <path d="M632 400 C608 356 652 330 630 286" stroke="#cfe6d8" stroke-width="30" fill="none" stroke-linecap="round" opacity="0.95"/>
+
+  <!-- 筷子 -->
+  <rect x="620" y="330" width="24" height="330" rx="12" transform="rotate(30 632 495)" fill="#e9d9b5"/>
+  <rect x="676" y="330" width="24" height="330" rx="12" transform="rotate(38 688 495)" fill="#dcc79c"/>
+
+  <!-- 定位针（美食地图/轨迹主题） -->
+  <path d="M512 60 C458 60 418 102 418 154 C418 220 512 292 512 292 C512 292 606 220 606 154 C606 102 566 60 512 60 Z" fill="#f2b33d"/>
+  <circle cx="512" cy="150" r="36" fill="#1d4733"/>
+
+  <!-- 碗 -->
+  <rect x="236" y="428" width="552" height="60" rx="30" fill="#ffffff"/>
+  <path d="M280 488 H744 C744 664 638 780 512 780 C386 780 280 664 280 488 Z" fill="url(#bowl)"/>
+  <path d="M312 488 C312 640 400 748 512 748 C624 748 712 640 712 488 Z" fill="#c9d8ce" opacity="0.55"/>
+  <rect x="448" y="780" width="128" height="52" rx="16" fill="#d9e5dd"/>
+</svg>

@@ -4,6 +4,7 @@ import UIKit
 class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private var table: UITableView!
     private var days: [[String: Any]] = []
+    private(set) var loaded = false
 
     override func loadView() {
         view = UIView()
@@ -38,10 +39,12 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
                 let fetched = try await API.getTrackDays()
                 OfflineStore.saveTrackDays(fetched)
                 days = Self.mergingPending(server: fetched)
+                loaded = true
                 table.reloadData()
             } catch {
                 // 断网兜底：历史日期缓存 + 未上传点聚合出的天
                 let cached = Self.mergingPending(server: OfflineStore.cachedTrackDays())
+                loaded = true
                 if !cached.isEmpty {
                     days = cached
                     table.reloadData()
@@ -51,6 +54,15 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
                 }
             }
         }
+    }
+
+    // SmokeTour 用：打开第一条日期（三级页：某天轨迹）
+    func smokeOpenFirst() {
+        guard !days.isEmpty else { return }
+        let day = days[0]["day"] as? String ?? ""
+        let vc = MapViewController()
+        vc.viewDay = day
+        navigationController?.pushViewController(vc, animated: false)
     }
 
     // 服务端按天统计合并本机未上传点（主要是今天），断网也能看到当天轨迹

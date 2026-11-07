@@ -461,6 +461,21 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         present(ocr, animated: false)
     }
 
+    // SmokeTour 用：合成一张大字白底图直接打开 OCR 面板（Vision zh-Hans 可稳定识别）
+    private(set) var smokeOcrController: OcrViewController?
+    func smokePresentOcr() {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 300))
+        let img = renderer.image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 300))
+            let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.boldSystemFont(ofSize: 96), .foregroundColor: UIColor.black]
+            ("美食日记" as NSString).draw(at: CGPoint(x: 90, y: 90), withAttributes: attrs)
+        }
+        let ocr = OcrViewController(image: img)
+        present(ocr, animated: false)
+        smokeOcrController = ocr
+    }
+
     private func doConfirmIngredient(named n: String, amount: NSNumber?) {
         Task {
             do {

@@ -142,7 +142,14 @@ class MapViewController: UIViewController, MKMapViewDelegate {
             let gcj = GCJConverter.wgs84ToGcj02(lat: lat, lng: lng)
             coords.append(CLLocationCoordinate2D(latitude: gcj.lat, longitude: gcj.lng))
         }
-        if let first = coords.first {
+        if viewDay == nil {
+            // 今天页：以当前位置为中心（而不是今天轨迹的早晨起点）；历史页才按轨迹起点定位
+            if let here = mapView.userLocation.location?.coordinate {
+                mapView.setRegion(MKCoordinateRegion(center: here, latitudinalMeters: 800, longitudinalMeters: 800), animated: false)
+            } else if let first = coords.first {
+                mapView.setRegion(MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800), animated: false)
+            }
+        } else if let first = coords.first {
             let r = MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800)
             mapView.setRegion(r, animated: false)
         }
@@ -177,5 +184,10 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = .current
         return f.string(from: d)
+    }
+
+    // SmokeTour 用：打开每日记录列表（二级页）
+    func smokeOpenDays() {
+        navigationController?.pushViewController(TrackDaysViewController(), animated: false)
     }
 }

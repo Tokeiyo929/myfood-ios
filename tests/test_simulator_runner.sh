@@ -19,11 +19,11 @@ case "$2" in
       partial) printf 'PASS first\n' > "$directory/result.txt"; exit 0 ;;
       timeout) exec /bin/sleep 60 ;;
       smoke-pass)
-        for name in 01-history 02-detail 03-record 04-map-china 05-map-europe 06-rank 07-tracks 08-settings; do
+        for name in 01-history 02-detail 03-ocr 04-record 05-map-china 06-map-europe 07-rank 08-tracks 09-track-days 10-track-day 11-settings 12-quotes; do
           : > "$directory/now-$name"
         done
         for ((i=0; i<1000; i++)); do
-          test -f "$directory/ack-08-settings" && break
+          test -f "$directory/ack-12-quotes" && break
           /bin/sleep 0.01
         done ;;
     esac
