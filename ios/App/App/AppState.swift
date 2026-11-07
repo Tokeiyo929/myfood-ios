@@ -55,12 +55,25 @@ final class AppConfig {
     static func load() async throws -> AppConfig {
         if let config = shared { return config }
         if let loading { return try await loading.value }
-        let task = Task { try AppConfig(raw: await API.getConfig()) }
+        let task = Task { () -> (raw: [String: Any], config: AppConfig) in
+            let raw = try await API.getConfig()
+            return (raw, try AppConfig(raw: raw))
+        }
         loading = task
         defer { loading = nil }
-        let config = try await task.value
-        shared = config
-        return config
+        do {
+            let (raw, config) = try await task.value
+            shared = config
+            OfflineStore.saveConfig(raw)
+            return config
+        } catch {
+            // 网络不可达 → 读磁盘缓存兜底；服务端响应无效（APIError）不得被旧缓存掩盖
+            guard isNetworkError(error),
+                  let raw = OfflineStore.cachedConfig(),
+                  let config = try? AppConfig(raw: raw) else { throw error }
+            shared = config
+            return config
+        }
     }
 
     func flavorLabel(_ name: String, level: Int) -> String {
@@ -95,14 +108,29 @@ struct CommentDraft {
 
 @MainActor
 final class TrackUploadQueue {
-    // shortcut: 待上传点仅存内存；需要进程退出恢复时再增加磁盘队列。
+    // pending 落盘（persistent=true 时）：断网积累的点进程退出也不丢，恢复后继续排空
     private(set) var pending: [[String: Any]] = []
     private var uploading: Task<Void, Error>?
     private let send: ([[String: Any]]) async throws -> Void
+    private let persistent: Bool
 
-    init(send: @escaping ([[String: Any]]) async throws -> Void = API.postTrackPoints) { self.send = send }
+    init(send: @escaping ([[String: Any]]) async throws -> Void = API.postTrackPoints, persistent: Bool = false) {
+        self.send = send
+        self.persistent = persistent
+        if persistent {
+            pending = (OfflineStore.loadJSON(name: "track-pending.json") as? [String: Any])?["points"] as? [[String: Any]] ?? []
+        }
+    }
 
-    func append(_ point: [String: Any]) { pending.append(point) }
+    private func persist() {
+        guard persistent else { return }
+        OfflineStore.saveJSON(["points": pending], name: "track-pending.json")
+    }
+
+    func append(_ point: [String: Any]) {
+        pending.append(point)
+        persist()
+    }
 
     func flush() async throws {
         if let uploading { return try await uploading.value }
@@ -111,12 +139,25 @@ final class TrackUploadQueue {
                 let batch = Array(self.pending.prefix(10))
                 try await self.send(batch)
                 self.pending.removeFirst(batch.count)
+                self.persist()
             }
         }
         uploading = task
         defer { uploading = nil }
         try await task.value
     }
+
+    // 离线查看用：按天取未上传点（含今天内存里的）
+    func pendingPoints(day: String) -> [[String: Any]] {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return pending.filter { p in
+            guard let ts = p["ts"] as? Double else { return false }
+            return f.string(from: Date(timeIntervalSince1970: ts / 1000)) == day
+        }
+    }
+
+    func allPendingPoints() -> [[String: Any]] { pending }
 }
 
 enum RankOrder {

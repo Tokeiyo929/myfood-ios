@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		AA00001400000000000000AAB /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001400000000000000AAA /* TestSupport.swift */; };
 		AA00001300000000000000AAB /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001300000000000000AAA /* AppState.swift */; };
+		AA00001500000000000000AAB /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001500000000000000AAA /* OfflineStore.swift */; };
 		AA00000100000000000000AAB /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000AAA /* API.swift */; };
 		AA00000200000000000000AAB /* TrackRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000AAA /* TrackRecorder.swift */; };
 		AA00000300000000000000AAB /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000300000000000000AAA /* MainTabBarController.swift */; };
@@ -36,6 +37,7 @@
 /* Begin PBXFileReference section */
 		AA00001400000000000000AAA /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		AA00001300000000000000AAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		AA00001500000000000000AAA /* OfflineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
 		AA00000100000000000000AAA /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		AA00000200000000000000AAA /* TrackRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecorder.swift; sourceTree = "<group>"; };
 		AA00000300000000000000AAA /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
@@ -115,6 +117,7 @@
 				AA00001200000000000000AAA /* AutoTest.swift */,
 				AA00001300000000000000AAA /* AppState.swift */,
 				AA00001400000000000000AAA /* TestSupport.swift */,
+				AA00001500000000000000AAA /* OfflineStore.swift */,
 				AA00000F00000000000000AAA /* china.geojson.json */,
 				AA00001000000000000000AAA /* europe.geojson.json */,
 			);
@@ -214,6 +217,7 @@
 			AA00001200000000000000AAB /* AutoTest.swift in Sources */,
 				AA00001300000000000000AAB /* AppState.swift in Sources */,
 				AA00001400000000000000AAB /* TestSupport.swift in Sources */,
+				AA00001500000000000000AAB /* OfflineStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

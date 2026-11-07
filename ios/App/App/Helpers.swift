@@ -9,7 +9,7 @@ enum Theme {
     static let border = UIColor(red: 0xe0/255.0, green: 0xe0/255.0, blue: 0xe0/255.0, alpha: 1)
 }
 
-// 异步图片加载 + 内存缓存，避免 cell 复用时重复下载
+// 异步图片加载 + 内存/磁盘缓存，避免 cell 复用时重复下载；断网时可用磁盘缓存展示
 final class ImageLoader {
     static let shared = ImageLoader()
     private let cache = NSCache<NSURL, UIImage>()
@@ -23,9 +23,22 @@ final class ImageLoader {
             imageView.image = img
             return
         }
+        if url.isFileURL { // 离线建档/换图的本地原图
+            if let img = UIImage(contentsOfFile: url.path) {
+                cache.setObject(img, forKey: url as NSURL)
+                imageView.image = img
+            }
+            return
+        }
+        if let data = OfflineStore.cachedImageData(for: url), let img = UIImage(data: data) {
+            cache.setObject(img, forKey: url as NSURL)
+            imageView.image = img
+            return
+        }
         URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data, let img = UIImage(data: data) else { return }
             self.cache.setObject(img, forKey: url as NSURL)
+            OfflineStore.cacheImage(data, for: url)
             DispatchQueue.main.async {
                 if imageView.tag == tag { imageView.image = img }
             }

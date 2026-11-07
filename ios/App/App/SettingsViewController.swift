@@ -45,6 +45,34 @@ class SettingsViewController: UIViewController {
         stack.addArrangedSubview(card("后端", BASE_URL))
         stack.addArrangedSubview(card("定位说明", "轨迹默认自动记录：启动后请在系统弹窗中选择「允许」，并设为「始终允许」可锁屏持续记录"))
 
+        // 离线同步状态：有待同步数据时展示数量，可手动立即同步
+        let pending = OfflineStore.pendingCount()
+        if pending > 0 {
+            let syncCard = card("离线同步", "有 \(pending) 条修改待同步，联网后自动上传")
+            let syncBtn = UIButton(type: .system)
+            syncBtn.setTitle("立即同步", for: .normal)
+            syncBtn.setTitleColor(Theme.primary, for: .normal)
+            syncBtn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+            syncBtn.layer.cornerRadius = 8
+            syncBtn.layer.borderWidth = 1
+            syncBtn.layer.borderColor = Theme.primary.withAlphaComponent(0.5).cgColor
+            syncBtn.addAction(UIAction { _ in
+                syncBtn.setTitle("同步中…", for: .normal)
+                Task {
+                    await SyncEngine.drain()
+                    syncBtn.setTitle(OfflineStore.pendingCount() > 0 ? "仍有待同步项" : "已同步", for: .normal)
+                }
+            }, for: .touchUpInside)
+            syncCard.addSubview(syncBtn)
+            syncBtn.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                syncBtn.trailingAnchor.constraint(equalTo: syncCard.trailingAnchor, constant: -14),
+                syncBtn.centerYAnchor.constraint(equalTo: syncCard.centerYAnchor),
+            ])
+            stack.addArrangedSubview(syncCard)
+        }
+        stack.addArrangedSubview(card("离线能力", "断网时可浏览缓存数据；建档/编辑/删除/换图/排名会本地保存，恢复联网后自动同步"))
+
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),

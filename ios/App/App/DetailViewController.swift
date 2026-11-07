@@ -269,17 +269,39 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     // MARK: - 数据
 
     private func loadAll() async {
+        var strip: [[String: Any]] = []
+        var cats: [[String: Any]] = []
+        var haveStrip = false
+        var haveCats = false
         do {
             let config = try await AppConfig.load()
-            stripRecords = try await API.getAllFoods(limit: config.maxPageSize, today: true)
-            if !stripRecords.contains(where: { ($0["id"] as? Int) == foodId }) {
-                stripRecords.insert(try await API.getFoodById(foodId), at: 0)
+            strip = try await API.getAllFoods(limit: config.maxPageSize, today: true)
+            haveStrip = true
+            if !strip.contains(where: { ($0["id"] as? Int) == foodId }) {
+                strip.insert(try await API.getFoodById(foodId), at: 0)
             }
-            let cats = try await API.getCategories()
-            allCategories = (cats["items"] as! [[String: Any]]).compactMap { $0["name"] as? String }
-            food = stripRecords.first { ($0["id"] as? Int) == foodId }
-            fill()
-        } catch {
+            OfflineStore.mergeRecords(strip)
+            let c = try await API.getCategories()
+            cats = (c["items"] as? [[String: Any]]) ?? []
+            haveCats = true
+            OfflineStore.saveCategories(cats)
+        } catch {}
+        let haveRecord = strip.contains(where: { ($0["id"] as? Int) == foodId })
+        if !haveStrip || !haveCats || !haveRecord {
+            // 断网兜底：今天缓存 + 目标记录 + 类别缓存
+            var cached = OfflineStore.cachedRecords().filter { OfflineStore.isToday($0) }
+            if let rec = OfflineStore.record(id: foodId),
+               !cached.contains(where: { ($0["id"] as? Int) == foodId }) {
+                cached.insert(rec, at: 0)
+            }
+            if cached.contains(where: { ($0["id"] as? Int) == foodId }) {
+                strip = cached
+                cats = OfflineStore.cachedCategories()
+                haveStrip = true
+                haveCats = true
+            }
+        }
+        guard haveStrip, haveCats else {
             let retry = UIButton(type: .system)
             retry.setTitle("加载失败，点此重试", for: .normal)
             retry.addAction(UIAction { [weak self, weak retry] _ in
@@ -287,8 +309,13 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
                 Task { await self?.loadAll() }
             }, for: .touchUpInside)
             stack.addArrangedSubview(retry)
-            Toast.show(error.localizedDescription, view)
+            Toast.show("加载失败，请检查网络", view)
+            return
         }
+        stripRecords = strip
+        allCategories = cats.compactMap { $0["name"] as? String }
+        food = stripRecords.first { ($0["id"] as? Int) == foodId }
+        fill()
     }
 
     private func fill() {
@@ -436,7 +463,13 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
     private func doConfirmIngredient(named n: String, amount: NSNumber?) {
         Task {
             do {
-                _ = try await API.addIngredient(n)
+                do {
+                    _ = try await API.addIngredient(n)
+                } catch {
+                    // 全局原料词典入队离线补传；记录字段本身照常追加
+                    guard isNetworkError(error) else { throw error }
+                    OfflineStore.enqueue(.ingredient(n))
+                }
                 var item: [String: Any] = ["name": n]
                 if let a = amount { item["amount"] = a }
                 ingredients.append(item)
@@ -454,31 +487,72 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         guard let id = food?["id"] as? Int else { return }
         Toast.show("上传中…", view)
         Task {
+            var jpeg: Data?
             do {
                 let config = try await AppConfig.load()
-                guard let jpeg = image.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                guard let data = image.resized(maxDimension: CGFloat(config.imageMaxDimension))
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
-                let upload = try await API.uploadImage(jpegData: jpeg)
-                var meta = upload["metadata"] as? [String: Any] ?? [:]
-                meta["taken_at"] = nowTakenAt()
+                jpeg = data
+                var meta: [String: Any] = ["taken_at": nowTakenAt()]
                 if let loc = await LocationOnce.fetch() {
                     meta["latitude"] = loc.lat
                     meta["longitude"] = loc.lng
                 }
-                _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as! String, "image_metadata": meta])
+                // 本地未同步记录：不发网络请求，直接入队（create 同步成功后自动改写目标）
+                if id < 0 {
+                    replaceOffline(data, meta: meta)
+                    return
+                }
+                let upload = try await API.uploadImage(jpegData: data)
+                var upMeta = upload["metadata"] as? [String: Any] ?? [:]
+                if let taken = meta["taken_at"] { upMeta["taken_at"] = taken }
+                if let lat = meta["latitude"] { upMeta["latitude"] = lat }
+                if let lng = meta["longitude"] { upMeta["longitude"] = lng }
+                _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as! String, "image_metadata": upMeta])
                 food?["image_path"] = upload["path"]
                 if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == id }) {
                     stripRecords[i]["image_path"] = upload["path"]
                 }
+                if let rec = food { OfflineStore.upsertRecord(rec) }
                 DispatchQueue.main.async {
                     self.onChanged?()
                     Toast.show("已更换", self.view)
                     self.stripCollection.reloadData()
                 }
             } catch {
-                DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+                guard isNetworkError(error), let data = jpeg else {
+                    DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+                    return
+                }
+                // 断网换图：原图落盘占位 + 入队（同步时先传图再 PATCH）
+                var meta: [String: Any] = ["taken_at": nowTakenAt()]
+                if let loc = await LocationOnce.fetch() {
+                    meta["latitude"] = loc.lat
+                    meta["longitude"] = loc.lng
+                }
+                replaceOffline(data, meta: meta)
             }
         }
+    }
+
+    // 断网/本地记录换图共用：原图落盘占位 + 入队 + 本地展示更新
+    private func replaceOffline(_ data: Data, meta: [String: Any]) {
+        let path = OfflineStore.saveLocalImage(data)
+        let fields: [String: Any] = ["image_path": path, "image_metadata": meta]
+        let id = food?["id"] as? Int ?? 0
+        if id > 0 {
+            OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+        } else if let key = food?["client_key"] as? String {
+            OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+        }
+        food?["image_path"] = path
+        if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == id }) {
+            stripRecords[i]["image_path"] = path
+        }
+        if let rec = food { OfflineStore.upsertRecord(rec) }
+        onChanged?()
+        Toast.show("已离线更换，联网后同步", view)
+        stripCollection.reloadData()
     }
 
     private func scrollStripToSelected() {
@@ -690,33 +764,65 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
             "comment": newComments,
         ]
         let id = f["id"] as! Int
-        Toast.show("保存中…", view)
         saving = true
         view.isUserInteractionEnabled = false
         Task {
             defer { saving = false; view.isUserInteractionEnabled = true }
+            // 本地未同步记录：不发网络请求，直接入队（create 同步成功后自动改写为服务端 id）
+            if id < 0 {
+                if let key = f["client_key"] as? String {
+                    OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+                }
+                applyLocalSave(fields, base: f, newComments: newComments)
+                Toast.show("已离线保存，联网后自动同步", view)
+                return
+            }
+            Toast.show("保存中…", view)
             do {
                 _ = try await API.updateFoodDetails(id, fields: fields)
-                draft.comments = newComments
-                draft.editingIndex = nil
-                commentInput.text = ""
-                commentPlaceholder.isHidden = false
-                renderComments()
+                applyLocalSave(fields, base: f, newComments: newComments)
                 onChanged?()
-                var updated = f
-                for (k, v) in fields { updated[k] = v }
-                food = updated
-                if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == id }) {
-                    for (k, v) in fields { stripRecords[i][k] = v }
-                }
                 DispatchQueue.main.async {
                     Toast.show("保存成功", self.view)
                     self.stripCollection.reloadData()
                 }
             } catch {
-                DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+                guard isNetworkError(error) else {
+                    DispatchQueue.main.async { Toast.show(error.localizedDescription, self.view) }
+                    return
+                }
+                // 断网保存：入队 + 本地乐观更新（含 modify_at/复购，镜像服务端 PATCH 行为）
+                OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+                applyLocalSave(fields, base: f, newComments: newComments)
+                onChanged?()
+                DispatchQueue.main.async {
+                    Toast.show("已离线保存，联网后自动同步", self.view)
+                    self.stripCollection.reloadData()
+                }
             }
         }
+    }
+
+    // 保存后的本地应用（在线/离线共用）：刷新表单态 + strip + 磁盘缓存
+    private func applyLocalSave(_ fields: [String: Any], base f: [String: Any], newComments: [String]) {
+        draft.comments = newComments
+        draft.editingIndex = nil
+        commentInput.text = ""
+        commentPlaceholder.isHidden = false
+        renderComments()
+        var updated = f
+        for (k, v) in fields { updated[k] = v }
+        var dates = updated["modify_at"] as? [String] ?? []
+        let today = OfflineStore.todayString()
+        if dates.last != today { dates.append(today) }
+        updated["modify_at"] = dates
+        updated["repurchase"] = max(0, dates.count - 1)
+        OfflineStore.upsertRecord(updated)
+        food = updated
+        if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == updated["id"] as? Int }) {
+            for (k, v) in fields { stripRecords[i][k] = v }
+        }
+        stripCollection.reloadData()
     }
 
     @objc private func deleteTapped() {
@@ -724,11 +830,31 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         alert.addAction(UIAlertAction(title: "取消", style: .cancel))
         alert.addAction(UIAlertAction(title: "删除", style: .destructive) { _ in
             Task {
+                // 本地未同步记录：直接撤销 create 队列，不发送网络请求
+                if self.foodId < 0 {
+                    if let key = self.food?["client_key"] as? String {
+                        OfflineStore.cancelPendingCreate(clientKey: key)
+                    }
+                    OfflineStore.removeRecord(id: self.foodId)
+                    self.onChanged?()
+                    Toast.show("已删除", self.view)
+                    self.navigationController?.popViewController(animated: true)
+                    return
+                }
                 do {
                     _ = try await API.deleteFood(self.foodId)
+                    OfflineStore.removeRecord(id: self.foodId)
                     self.onChanged?()
                     self.navigationController?.popViewController(animated: true)
-                } catch { Toast.show(error.localizedDescription, self.view) }
+                } catch {
+                    guard isNetworkError(error) else { Toast.show(error.localizedDescription, self.view); return }
+                    // 断网删除：本地移除 + 入队
+                    OfflineStore.enqueue(.delete(serverId: self.foodId))
+                    OfflineStore.removeRecord(id: self.foodId)
+                    self.onChanged?()
+                    Toast.show("已离线删除，联网后同步", self.view)
+                    self.navigationController?.popViewController(animated: true)
+                }
             }
         })
         present(alert, animated: true)

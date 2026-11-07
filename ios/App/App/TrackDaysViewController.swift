@@ -35,10 +35,47 @@ class TrackDaysViewController: UIViewController, UITableViewDataSource, UITableV
     private func load() {
         Task {
             do {
-                days = try await API.getTrackDays()
+                let fetched = try await API.getTrackDays()
+                OfflineStore.saveTrackDays(fetched)
+                days = Self.mergingPending(server: fetched)
                 table.reloadData()
-            } catch { Toast.show(error.localizedDescription, view) }
+            } catch {
+                // 断网兜底：历史日期缓存 + 未上传点聚合出的天
+                let cached = Self.mergingPending(server: OfflineStore.cachedTrackDays())
+                if !cached.isEmpty {
+                    days = cached
+                    table.reloadData()
+                    Toast.show("离线数据（可能不是最新）", view)
+                } else {
+                    Toast.show(error.localizedDescription, view)
+                }
+            }
         }
+    }
+
+    // 服务端按天统计合并本机未上传点（主要是今天），断网也能看到当天轨迹
+    static func mergingPending(server: [[String: Any]]) -> [[String: Any]] {
+        var result = server
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        var pendingByDay: [String: Int] = [:]
+        for p in TrackRecorder.shared.allPendingPoints() {
+            guard let ts = p["ts"] as? Double else { continue }
+            let day = f.string(from: Date(timeIntervalSince1970: ts / 1000))
+            pendingByDay[day, default: 0] += 1
+        }
+        guard !pendingByDay.isEmpty else { return result }
+        for i in result.indices {
+            let day = result[i]["day"] as? String ?? ""
+            let base = result[i]["points"] as? Int ?? 0
+            if let extra = pendingByDay.removeValue(forKey: day) {
+                result[i]["points"] = base + extra
+            }
+        }
+        for (day, count) in pendingByDay {
+            result.append(["day": day, "points": count])
+        }
+        return result.sorted { ($0["day"] as? String ?? "") > ($1["day"] as? String ?? "") }
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {

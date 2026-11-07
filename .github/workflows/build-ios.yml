@@ -73,7 +73,7 @@ jobs:
 
       - name: Core regression tests (isolated)
         run: |
-          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
+          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
           /tmp/myfood-core-tests
           bash tests/test_simulator_runner.sh
           python3 -m unittest discover -s tests -p 'test_*.py'

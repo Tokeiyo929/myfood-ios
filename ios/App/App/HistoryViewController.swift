@@ -144,8 +144,16 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 async let uploadTask = API.uploadImage(jpegData: jpeg)
                 async let locTask = LocationOnce.fetch()
-                let upload = try await uploadTask
+                var upload: [String: Any]?
+                var uploadError: Error?
+                do { upload = try await uploadTask } catch { uploadError = error }
                 let loc = await locTask
+                guard let upload else {
+                    // 断网兜底：本地建档，恢复联网由 SyncEngine 上传
+                    guard let err = uploadError else { return }
+                    try await offlineAdd(jpeg: jpeg, loc: loc, config: config, error: err)
+                    return
+                }
                 var meta = upload["metadata"] as? [String: Any] ?? [:]
                 meta["taken_at"] = nowTakenAt()
                 if let loc {
@@ -175,6 +183,37 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
         }
     }
 
+    // 断网建档：原图落盘 + 本地负数 id 记录（置顶展示）+ 入队；上传用 client_key 幂等
+    private func offlineAdd(jpeg: Data, loc: LocationOnce.Result?, config: AppConfig, error: Error) async throws {
+        guard isNetworkError(error) else { throw error }
+        let imagePath = OfflineStore.saveLocalImage(jpeg)
+        var meta: [String: Any] = ["taken_at": nowTakenAt()]
+        if let loc {
+            meta["latitude"] = loc.lat
+            meta["longitude"] = loc.lng
+        }
+        let clientKey = String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36)
+        let localId = OfflineStore.allocateLocalId()
+        let localRecord: [String: Any] = [
+            "id": localId, "name": "", "brand_name": "", "price": NSNull(),
+            "categories": [], "ingredients": [], "flavors": [],
+            "preference": config.defaultPreference, "comment": [], "worth_it": "",
+            "image_path": imagePath, "image_metadata": meta, "category_rank": [:],
+            "modify_at": [OfflineStore.todayString()], "repurchase": 0, "client_key": clientKey,
+        ]
+        var payload = localRecord
+        payload.removeValue(forKey: "id")
+        OfflineStore.enqueue(.create(record: payload, clientKey: clientKey, localId: localId, localImage: imagePath))
+        OfflineStore.upsertRecord(localRecord)
+        onRecordsChanged?()
+        smokeAddState = "offline-saved"
+        Toast.show("已离线保存，联网后自动同步", view)
+        await reloadFromCache(reset: true)
+        if !records.isEmpty {
+            table.scrollToRow(at: IndexPath(row: 0, section: 0), at: .top, animated: false)
+        }
+    }
+
     // 冒烟巡访用：不经过相册 UI，直接走 quickAdd 全流程（fixture 服务端）
     private(set) var smokeAddState = "idle"
     func smokeQuickAdd() {
@@ -201,13 +240,15 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
             }
         }
         let reqPage = reset ? 1 : page + 1
+        var limit = 10
         do {
             let config = try await AppConfig.load()
-            let limit = config.pageSize
+            limit = config.pageSize
             let r = try await API.getFoods(page: reqPage, limit: limit, search: query)
             guard requestGeneration == generation else { return }
             let items = (r["items"] as! [[String: Any]]).map { AppConfig.decorate($0) }
             let total = r["total"] as! Int
+            OfflineStore.mergeRecords(r["items"] as! [[String: Any]])
             loaded = true
             records = reset ? items : records + items
             page = reqPage
@@ -215,8 +256,31 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
             table.reloadData()
         } catch {
             guard requestGeneration == generation else { return }
-            Toast.show(error.localizedDescription, view)
+            // 断网兜底：本地缓存过滤 + 本地分页
+            let cached = OfflineStore.searchRecords(query)
+            let slice = Array(cached.dropFirst((reqPage - 1) * limit).prefix(limit))
+            guard !cached.isEmpty else { Toast.show(error.localizedDescription, view); return }
+            loaded = true
+            let items = slice.map { AppConfig.decorate($0) }
+            records = reset ? items : records + items
+            page = reqPage
+            hasMore = records.count < cached.count
+            table.reloadData()
+            Toast.show("离线数据（可能不是最新）", view)
         }
+    }
+
+    // quickAdd 用：离线新建后直接从缓存刷新列表（避免断网时再发一次注定失败的请求）
+    private func reloadFromCache(reset: Bool) async {
+        let cached = OfflineStore.searchRecords(search)
+        let limit = config?.pageSize ?? 10
+        let reqPage = reset ? 1 : page + 1
+        let slice = Array(cached.dropFirst((reqPage - 1) * limit).prefix(limit))
+        loaded = true
+        records = reset ? slice.map { AppConfig.decorate($0) } : records + slice.map { AppConfig.decorate($0) }
+        page = reqPage
+        hasMore = records.count < cached.count
+        table.reloadData()
     }
 
     // MARK: table

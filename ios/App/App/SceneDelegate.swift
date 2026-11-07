@@ -11,4 +11,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window?.rootViewController = root
         window?.makeKeyAndVisible()
     }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // 回前台补一次离线队列排空（联网时为空队列即空转）
+        #if DEBUG
+        guard !AutoTest.enabled, !SmokeTour.enabled else { return }
+        #endif
+        Task { await SyncEngine.drain() }
+    }
 }

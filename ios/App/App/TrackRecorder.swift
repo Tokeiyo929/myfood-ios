@@ -8,7 +8,7 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
 
     private let manager = CLLocationManager()
     private var lastSent: (lat: Double, lng: Double, t: TimeInterval)?
-    private let queue = TrackUploadQueue()
+    private let queue = TrackUploadQueue(persistent: true) // 待传点落盘，断网/进程退出不丢
     private var startRequested = false
     private var pointDay = Calendar.current.startOfDay(for: Date())
     private var flushTimer: Timer?
@@ -112,6 +112,12 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
         do { try await queue.flush() }
         catch { onError?("轨迹上传失败，待上传点已保留；联网后重试") }
     }
+
+    // 离线查看用：某天尚未上传的点
+    func pendingPoints(day: String) -> [[String: Any]] { queue.pendingPoints(day: day) }
+
+    // 离线查看用：全部尚未上传的点
+    func allPendingPoints() -> [[String: Any]] { queue.allPendingPoints() }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { onError?(error.localizedDescription) }
 }

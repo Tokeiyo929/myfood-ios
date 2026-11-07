@@ -200,36 +200,50 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         guard !loading else { return }
         loading = true
         defer { loading = false }
+        var offline = false
+        var foods: [[String: Any]] = []
+        var catItems: [[String: Any]] = []
         do {
             let config = try await AppConfig.load()
             let limit = config.maxPageSize
-            let foods = try await API.getAllFoods(limit: limit)
-            allFoods = foods
-            var visited: Set<String> = []
-            for f in foods {
-                let cats = f["categories"] as? [String] ?? []
-                for c in cats where !c.isEmpty { visited.insert(c) }
-            }
-            visitedDishes = visited
-
+            foods = try await API.getAllFoods(limit: limit)
+            OfflineStore.mergeRecords(foods)
             let catResult = try await API.getCategories()
-            var byProv: [String: [String]] = [:]
-            for item in catResult["items"] as? [[String: Any]] ?? [] {
-                guard let name = item["name"] as? String else { continue }
-                let prov = (item["parentcategories"] as? String ?? "").trimmingCharacters(in: .whitespaces)
-                guard !prov.isEmpty else { continue }
-                byProv[prov, default: []].append(name)
-            }
-            byProvince = byProv
-
-            await MainActor.run {
-                statusLabel.text = ""
-                dataReady = true
-                renderMap()
-            }
+            catItems = catResult["items"] as? [[String: Any]] ?? []
+            OfflineStore.saveCategories(catItems)
         } catch {
-            needsRefresh = true
-            await MainActor.run { statusLabel.text = "地图数据加载失败" }
+            // 断网兜底：本地缓存继续可用
+            let cachedFoods = OfflineStore.cachedRecords()
+            let cachedCats = OfflineStore.cachedCategories()
+            guard !cachedFoods.isEmpty || !cachedCats.isEmpty else {
+                needsRefresh = true
+                await MainActor.run { statusLabel.text = "地图数据加载失败" }
+                return
+            }
+            foods = cachedFoods
+            catItems = cachedCats
+            offline = true
+        }
+        var visited: Set<String> = []
+        for f in foods {
+            let cats = f["categories"] as? [String] ?? []
+            for c in cats where !c.isEmpty { visited.insert(c) }
+        }
+        var byProv: [String: [String]] = [:]
+        for item in catItems {
+            guard let name = item["name"] as? String else { continue }
+            let prov = (item["parentcategories"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+            guard !prov.isEmpty else { continue }
+            byProv[prov, default: []].append(name)
+        }
+        let isOffline = offline
+        await MainActor.run {
+            statusLabel.text = isOffline ? "离线数据（可能不是最新）" : ""
+            dataReady = true
+            visitedDishes = visited
+            byProvince = byProv
+            allFoods = foods
+            renderMap()
         }
     }
 
@@ -464,11 +478,17 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
     }
 
     // 交换后按显示顺序写入名次（1 开始），只 PATCH 有变化的记录（对齐 applyRankOrder）
+    // 断网时入队 + 本地更新，恢复联网后由 SyncEngine 补传，UI 视为保存成功
     private func applyRankOrder(_ list: [[String: Any]], cat: String) async throws {
         for change in RankOrder.changes(list, current: allFoods, category: cat) {
-            _ = try await API.updateFoodDetails(change.id, fields: ["category_rank": change.rank])
+            do {
+                _ = try await API.updateFoodDetails(change.id, fields: ["category_rank": change.rank])
+            } catch {
+                OfflineStore.enqueue(.patch(serverId: change.id, fields: ["category_rank": change.rank]))
+            }
             if let index = allFoods.firstIndex(where: { ($0["id"] as? Int) == change.id }) {
                 allFoods[index]["category_rank"] = change.rank
+                OfflineStore.upsertRecord(allFoods[index])
             }
         }
     }

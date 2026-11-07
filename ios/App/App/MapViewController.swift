@@ -97,10 +97,11 @@ class MapViewController: UIViewController, MKMapViewDelegate {
     // 默认记录无手动开关：记录中显示点数；未记录（如定位被拒）提示点按开启
     private func refreshStatus() {
         guard viewDay == nil else { return }
+        let offlineMark = NetworkMonitor.shared.isOnline ? "" : " · 离线(底图可能空白)"
         if TrackRecorder.shared.isTracking {
-            statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点"
+            statusLabel.text = "记录中 · \(TrackRecorder.shared.todayPoints.count)点\(offlineMark)"
         } else {
-            statusLabel.text = "未记录 · 点按开启"
+            statusLabel.text = "未记录 · 点按开启\(offlineMark)"
         }
     }
 
@@ -110,10 +111,20 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         Task {
             do {
                 let points = try await API.getTrackPoints(day: day)
+                OfflineStore.saveTrackPoints(points, day: day)
                 render(points: points)
                 loaded = true
             } catch {
-                DispatchQueue.main.async { self.statusLabel.text = "轨迹加载失败" }
+                // 断网兜底：当天缓存 + 本机未上传点
+                var cached = OfflineStore.cachedTrackPoints(day: day)
+                cached += TrackRecorder.shared.pendingPoints(day: day)
+                if !cached.isEmpty {
+                    render(points: cached)
+                    loaded = true
+                    statusLabel.text = "离线轨迹 · \(cached.count)点"
+                } else {
+                    statusLabel.text = "轨迹加载失败"
+                }
             }
         }
     }

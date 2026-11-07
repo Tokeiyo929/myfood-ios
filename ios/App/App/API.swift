@@ -11,6 +11,7 @@ enum API {
     static var session = URLSession.shared
     static func imageUrl(_ path: String?) -> URL? {
         guard let p = path, !p.isEmpty else { return nil }
+        if p.hasPrefix("offline:") { return OfflineStore.localImageURL(p) } // 离线待传原图
         if p.hasPrefix("http") { return URL(string: p) }
         return URL(string: BASE_URL + p)
     }

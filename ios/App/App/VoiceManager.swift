@@ -59,13 +59,20 @@ final class VoiceManager: NSObject {
             let allowed = await ensurePermission()
             guard !Task.isCancelled, sessionID == id, let receiver, current === receiver else { return }
             guard allowed else { fail("请允许麦克风和语音识别权限"); return }
-            guard let recognizer, recognizer.isAvailable else { fail("语音功能不可用"); return }
+            // 断网走设备端识别（zh-CN 支持时）；不支持则明确提示
+            let offline = !NetworkMonitor.shared.isOnline
+            if offline, recognizer?.supportsOnDeviceRecognition != true {
+                fail("离线状态暂不支持语音识别")
+                return
+            }
+            guard let recognizer, (offline || recognizer.isAvailable) else { fail("语音功能不可用"); return }
             do {
                 let session = AVAudioSession.sharedInstance()
                 try session.setCategory(.record, mode: .measurement, options: .duckOthers)
                 try session.setActive(true)
                 let req = SFSpeechAudioBufferRecognitionRequest()
                 req.shouldReportPartialResults = true
+                req.requiresOnDeviceRecognition = offline
                 request = req
                 let input = engine.inputNode
                 let format = input.outputFormat(forBus: 0)
