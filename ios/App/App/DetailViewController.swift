@@ -936,6 +936,8 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         b.layer.borderWidth = 1
         b.layer.borderColor = Theme.primary.withAlphaComponent(0.5).cgColor
         b.setTitleColor(Theme.primary, for: .normal)
+        // 单个 chip 时 stack 会把它拉满整行宽（视觉测试暴露），拥抱内容保持胶囊形
+        b.setContentHuggingPriority(.required, for: .horizontal)
         return b
     }
 

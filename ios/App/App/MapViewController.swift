@@ -65,7 +65,7 @@ class MapViewController: UIViewController, MKMapViewDelegate {
             mapView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
             mapView.bottomAnchor.constraint(equalTo: infoLabel.topAnchor, constant: -8),
             statusLabel.leadingAnchor.constraint(equalTo: mapView.leadingAnchor, constant: 8),
-            statusLabel.bottomAnchor.constraint(equalTo: mapView.bottomAnchor, constant: -8),
+            statusLabel.topAnchor.constraint(equalTo: mapView.topAnchor, constant: 8), // 底部有 Apple Maps 水印，移到顶部
             infoLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             infoLabel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -8),
         ])

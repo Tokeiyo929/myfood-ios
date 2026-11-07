@@ -351,7 +351,8 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         contentView.frame = CGRect(x: 0, y: 0, width: vw, height: vh)
     }
 
-    // 投影参数（纯函数，便于自测）：经度先乘 cos(midLat) 再 fit 视窗；水平居中、垂直顶部对齐（避免上方大片空白）
+    // 投影参数（纯函数，便于自测）：经度先乘 cos(midLat) 再 fit 视窗；水平居中、垂直居中
+    // （竖屏手机上地图宽扁，顶部对齐会在下方留大片空白——视觉测试暴露后改为垂直居中）
     static func projectParams(vw: CGFloat, vh: CGFloat, minLon: Double, maxLon: Double, minLat: Double, maxLat: Double) -> (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double) {
         let midLat = (minLat + maxLat) / 2
         let cosLat = cos(midLat * .pi / 180)
@@ -359,7 +360,8 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         let dLat = maxLat - minLat
         let k = min(Double(vw) / dLon, Double(vh) / dLat)
         let offsetX = (Double(vw) - dLon * k) / 2
-        return (k, offsetX, 0, minLon, maxLat, cosLat)
+        let offsetY = (Double(vh) - dLat * k) / 2
+        return (k, offsetX, offsetY, minLon, maxLat, cosLat)
     }
 
     static func projectPoint(_ lonlat: CGPoint, params: (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double)) -> CGPoint {

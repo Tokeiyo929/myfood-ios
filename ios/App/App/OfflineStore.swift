@@ -377,8 +377,10 @@ enum OfflineStore {
         let ia = a["id"] as? Int ?? 0
         let ib = b["id"] as? Int ?? 0
         if (ia < 0) != (ib < 0) { return ia < 0 } // 本地新档置顶
-        if ia != ib { return ia > ib }            // 服务端按创建时间倒序返回，用 id 兜底
-        return false
+        let da = a["day"] as? String ?? ""        // 服务端按创建时间倒序：日期倒序优先
+        let db = b["day"] as? String ?? ""
+        if da != db { return da > db }
+        return ia > ib
     }
 
     private static func quotes() -> [[String: Any]] {

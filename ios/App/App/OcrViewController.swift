@@ -134,6 +134,7 @@ final class OcrViewController: UIViewController, UICollectionViewDataSource, UIC
             sv.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
             sv.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -14),
             collection.heightAnchor.constraint(greaterThanOrEqualToConstant: 180),
+            collection.heightAnchor.constraint(lessThanOrEqualToConstant: 300), // 空灰区别拉满整屏（视觉测试暴露）
         ])
         updateTargetButtons()
         updateHint()

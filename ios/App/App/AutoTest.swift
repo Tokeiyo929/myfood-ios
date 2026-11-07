@@ -40,7 +40,7 @@ enum AutoTest {
                 check(abs(Double(point.x) - params.offsetX) < 0.001 && abs(Double(point.y) - params.offsetY) < 0.001, "地图投影起点")
                 let ratio = (62 * params.cosLat * params.k) / (35 * params.k)
                 check(abs(ratio - 62 * cos(35.5 * .pi / 180) / 35) < 0.001, "地图投影cos校正")
-                check(params.offsetY == 0, "地图投影顶部对齐不留上方空白")
+                check(abs(params.offsetY - (400.0 - 35 * params.k) / 2) < 0.001 && params.offsetY >= 0, "地图投影垂直居中不留大片空白")
             } catch { check(false, "自测异常：\(error)") }
             lines.append(failures == 0 ? "RESULT: ALL PASS" : "RESULT: FAIL")
             do {

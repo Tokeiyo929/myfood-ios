@@ -94,7 +94,8 @@ final class RankModalView: UIView, UITableViewDataSource, UITableViewDelegate, U
             table.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 8),
             table.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12),
             table.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -12),
-            table.bottomAnchor.constraint(equalTo: panel.bottomAnchor),
+            // 底部避让安全区（tab 栏），否则最后几条被盖住（视觉测试暴露）
+            table.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor),
         ])
     }
 
