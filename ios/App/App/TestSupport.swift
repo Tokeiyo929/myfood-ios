@@ -266,7 +266,8 @@ enum CoreRegression {
         OfflineStore.enqueue(.create(record: ["name": "z", "client_key": "k3"], clientKey: "k3", localId: -2, localImage: nil))
         OfflineStore.enqueue(.patchLocal(clientKey: "k3", fields: ["name": "z2"]))
         OfflineStore.cancelPendingCreate(clientKey: "k3")
-        report(OfflineStore.pendingMutations().isEmpty, "本地记录离线删除连带撤销其 patch")
+        // 队列里仅剩此前已改写为服务端 id 的 patch@42；k3 的 create 与 patch 均被连带撤销
+        report(OfflineStore.pendingMutations().count == 1 && OfflineStore.pendingMutations()[0].serverId == 42, "本地记录离线删除连带撤销其 patch")
 
         // AppConfig 断网兜底：先联网一次落盘缓存，再断网应命中缓存；无缓存必须失败
         AppConfig.shared = nil
