@@ -127,7 +127,7 @@ struct QuotesView: View {
                         .frame(minHeight: 60, maxHeight: 100)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.85)))
                     if vm.input.isEmpty {
-                        Text("记下一句打动你的话…").font(.system(size: 14)).foregroundStyle(.placeholderText).padding(10)
+                        Text("记下一句打动你的话…").font(.system(size: 14)).foregroundStyle(Color(.placeholderText)).padding(10)
                     }
                 }
                 Button { vm.save() } label: {

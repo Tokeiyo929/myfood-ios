@@ -27,7 +27,7 @@ final class FoodMapViewModel {
     func loadFeatures() { features = FoodMapGeometry.loadFeatures(region) }
 
     // 投影 + 当前缩放/平移 → 视口坐标路径（Canvas 绘制与点选命中共用，不在绘制中改状态）
-    func renderedPaths(size: CGSize, features: [FoodMapGeometry.ProvinceFeature]) -> [(path: Path, visited: Bool)] {
+    func renderedPaths(size: CGSize, features: [FoodMapGeometry.ProvinceFeature]) -> [(name: String, path: Path, visited: Bool)] {
         guard !features.isEmpty else { return [] }
         var minLon = Double.greatestFiniteMagnitude, maxLon = -Double.greatestFiniteMagnitude
         var minLat = Double.greatestFiniteMagnitude, maxLat = -Double.greatestFiniteMagnitude
@@ -36,7 +36,7 @@ final class FoodMapViewModel {
             minLat = min(minLat, Double(p.y)); maxLat = max(maxLat, Double(p.y))
         } } }
         let params = FoodMapGeometry.projectParams(vw: size.width, vh: size.height, minLon: minLon, maxLon: maxLon, minLat: minLat, maxLat: maxLat)
-        var out: [(path: Path, visited: Bool)] = []
+        var out: [(name: String, path: Path, visited: Bool)] = []
         let isEurope = region == "europe"
         for f in features {
             let prov = isEurope ? f.name : FoodMapGeometry.toFullName(f.name)
@@ -54,7 +54,7 @@ final class FoodMapViewModel {
                 }
                 path.closeSubpath()
             }
-            out.append((path, isVisited))
+            out.append((f.name, path, isVisited))
         }
         return out
     }
@@ -254,7 +254,7 @@ struct FoodMapView: View {
                 }
                 .padding(8)
             }
-            .background(Color.systemBackground)
+            .background(Color(UIColor.systemBackground))
         }
         .navigationTitle("地图")
         .navigationBarTitleDisplayMode(.inline)
@@ -296,7 +296,7 @@ struct FoodMapView: View {
             ZStack(alignment: .bottomTrailing) {
                 Canvas { ctx, size in
                     guard app.foodMap.dataReady else { return }
-                    for (path, visited) in app.foodMap.renderedPaths(size: size, features: features) {
+                    for (_, path, visited) in app.foodMap.renderedPaths(size: size, features: app.foodMap.features) {
                         ctx.fill(path, with: .color(visited ? Color(red: 0.702, green: 0.616, blue: 0.859) : Color(white: 0.941)))
                         ctx.stroke(path, with: .color(Color(white: 0.8)), lineWidth: 0.5 / max(1, app.foodMap.zoom))
                     }
@@ -304,7 +304,7 @@ struct FoodMapView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { location in
                     let paths = app.foodMap.renderedPaths(size: geo.size, features: app.foodMap.features)
-                    for (name, path, _) in paths.reversed() where path.contains(location) {
+                    for (_, path, _) in paths.reversed() where path.contains(location) {
                         app.foodMap.selectProvince(name)
                         return
                     }
@@ -394,7 +394,7 @@ struct DishPanelView: View {
                         Button { app.foodMap.openRank(category: dish.name) } label: {
                             HStack {
                                 Text(dish.name).font(.system(size: 14))
-                                    .foregroundStyle(dish.visited ? .label : Color(white: 0.73))
+                                    .foregroundStyle(dish.visited ? Color(UIColor.label) : Color(white: 0.73))
                                 Spacer()
                                 if dish.visited {
                                     Text("✓").font(.system(size: 12)).foregroundStyle(Theme.excellent)

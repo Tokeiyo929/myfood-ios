@@ -694,7 +694,8 @@ struct DetailView: View {
     private var stripSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(app.detail.stripRecords, id: \.id) { rec in
+                ForEach(app.detail.stripRecords.indices, id: \.self) { ridx in
+                    let rec = app.detail.stripRecords[ridx]
                     let id = rec["id"] as? Int ?? 0
                     VStack(spacing: 3) {
                         RemoteImage(path: rec["image_path"] as? String)

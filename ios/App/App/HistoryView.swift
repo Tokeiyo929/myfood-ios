@@ -188,6 +188,7 @@ struct HistoryView: View {
 
     var body: some View {
         @Bindable var app = app
+        @Bindable var vm = app.history
         NavigationStack(path: $app.historyPath) {
             VStack(spacing: 0) {
                 searchField
