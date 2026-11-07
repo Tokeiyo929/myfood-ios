@@ -864,7 +864,8 @@ struct DetailView: View {
                     .frame(width: 90)
             }
             if let p = vm.ingredientPreview {
-                Button("＋ 确认添加：\(p.name)\(p.amount.isEmpty ? "" : " (\(p.amount)%)") {
+                let label = "＋ 确认添加：\(p.name)" + (p.amount.isEmpty ? "" : " (\(p.amount)%)")
+                Button(label) {
                     vm.confirmIngredient()
                 }
                 .font(.system(size: 13))
