@@ -320,11 +320,14 @@ enum OfflineStore {
         savePending(list)
     }
 
-    // 本地未同步记录被离线删除：连同 create 队列项一起撤销
+    // 本地未同步记录被离线删除：连同 create 队列项与其后续 patch 一起撤销
+    // （已改写为服务端 id 的 patch 不受影响——那条记录服务端已存在）
     static func cancelPendingCreate(clientKey: String) {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
-        list.removeAll { $0.kind == "create" && $0.clientKey == clientKey }
+        list.removeAll {
+            ($0.kind == "create" && $0.clientKey == clientKey) || ($0.kind == "patch" && $0.clientKey == clientKey)
+        }
         savePending(list)
     }
 

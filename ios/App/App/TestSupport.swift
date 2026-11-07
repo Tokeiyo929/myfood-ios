@@ -258,8 +258,15 @@ enum CoreRegression {
         OfflineStore.resolvePending(clientKey: "k1", serverId: 42)
         let resolved = OfflineStore.pendingMutations()
         report(resolved.count == 2 && resolved[1].serverId == 42 && resolved[1].clientKey == nil, "create 成功后本地 patch 改写为服务端 id")
-        OfflineStore.cancelPendingCreate(clientKey: "k1")
-        report(OfflineStore.pendingMutations().isEmpty, "撤销本地 create 连带清空")
+        OfflineStore.cancelPendingCreate(clientKey: "k2") // 无关 key 无副作用
+        report(OfflineStore.pendingMutations().count == 2, "撤销无关 create 无副作用")
+        OfflineStore.cancelPendingCreate(clientKey: "k1") // 已改写的 patch 归属服务端记录，保留
+        report(OfflineStore.pendingMutations().count == 1 && OfflineStore.pendingMutations()[0].serverId == 42, "撤销本地 create 只移除 create 本体")
+        // 本地记录未同步即被删：create 与其后续 patch 一并撤销
+        OfflineStore.enqueue(.create(record: ["name": "z", "client_key": "k3"], clientKey: "k3", localId: -2, localImage: nil))
+        OfflineStore.enqueue(.patchLocal(clientKey: "k3", fields: ["name": "z2"]))
+        OfflineStore.cancelPendingCreate(clientKey: "k3")
+        report(OfflineStore.pendingMutations().isEmpty, "本地记录离线删除连带撤销其 patch")
 
         // AppConfig 断网兜底：先联网一次落盘缓存，再断网应命中缓存；无缓存必须失败
         AppConfig.shared = nil
