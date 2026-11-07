@@ -217,6 +217,7 @@ struct TrackDaysView: View {
 
     var body: some View {
         @Bindable var app = app
+        @Bindable var days = app.days
         List {
             if app.days.days.isEmpty {
                 Text(app.days.loaded ? "还没有轨迹记录\n轨迹在 App 启动后自动记录" : "加载中…")
@@ -237,7 +238,7 @@ struct TrackDaysView: View {
         }
         .navigationTitle("每日记录")
         .navigationBarTitleDisplayMode(.inline)
-        .toast($app.days.toast)
+        .toast($days.toast)
         .task { await app.days.load() }
     }
 }

@@ -304,7 +304,7 @@ struct FoodMapView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { location in
                     let paths = app.foodMap.renderedPaths(size: geo.size, features: app.foodMap.features)
-                    for (_, path, _) in paths.reversed() where path.contains(location) {
+                    for (name, path, _) in paths.reversed() where path.contains(location) {
                         app.foodMap.selectProvince(name)
                         return
                     }

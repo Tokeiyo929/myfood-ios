@@ -48,7 +48,7 @@ struct SettingsView: View {
             }
             .padding(20)
         }
-        .background(Color.systemBackground)
+        .background(Color(UIColor.systemBackground))
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { model.syncIfNeededText() }

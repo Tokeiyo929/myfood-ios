@@ -138,8 +138,12 @@ enum OfflineImage {
         guard let p = path, !p.isEmpty else { return nil }
         if p.hasPrefix("offline:") { return OfflineStore.localImageURL(p) }
         if p.hasPrefix("http") { return URL(string: p) }
-        return URL(string: API.BASE_URL + p)
+        return URL(string: BASE_URL + p)
     }
+}
+
+extension Notification.Name {
+    static let myfoodDataSynced = Notification.Name("myfood.dataSynced")
 }
 
 // 轻提示（对齐原 Toast）
@@ -217,7 +221,7 @@ struct RecordCardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.displayTitle)
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.label)
+                    .foregroundStyle(Color(UIColor.label))
                     .lineLimit(1)
                 if !record.flavorLabels.isEmpty {
                     Text("味道：" + record.flavorLabels.joined(separator: " "))
