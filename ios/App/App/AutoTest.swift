@@ -65,23 +65,29 @@ enum AutoTest {
             return 0
         }
         // SwiftUI 迁移后 UI 回归走 ViewModel：慢旧搜索不阻挡、不覆盖最新搜索
+        func mark(_ m: String) { lines.append("MARK \(m)") }
         let app = AppModel.shared
         app.history.needsRefresh = false
         OfflineStore.wipeAll()
+        mark("启动慢请求前")
         Task { await app.history.loadRecords(reset: true) }
         try await waitUntil { oldRequestStarted }
+        mark("慢请求已开始")
         app.history.onSearchChange("测试记录 80")
         try await waitUntil { app.history.loaded && app.history.recordIDs == [80] }
         check(app.history.recordIDs == [80] && !app.history.loading, "慢旧搜索不阻挡、不覆盖最新搜索")
+        mark("搜索断言后")
         // 图片加载：无图路径返回 nil
         let img = await RemoteImageModel.shared.load(nil)
         check(img == nil, "无图路径不产出图片")
+        mark("图片断言后")
         // 详情 VM：填充与表单往返
         app.detail.open(recordId: 80)
         OfflineStore.flushIO()
         await app.detail.loadAll()
         check(app.detail.loaded && app.detail.name == "测试记录 80", "详情按 id 加载记录")
         check(DetailViewModel.prevRecordLabel(["2026-11-01", "2026-11-03"]) == "上次记录：2026-11-01", "上次记录标签")
+        mark("详情断言后")
         TestFixture.install()
     }
 
