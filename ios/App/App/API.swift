@@ -112,4 +112,17 @@ enum API {
         guard let days = r["days"] as? [[String: Any]] else { throw APIError(message: "轨迹日期格式无效") }
         return days
     }
+
+    // MARK: - 摘抄
+    static func getQuotes() async throws -> [String: Any] {
+        let r = try await request("/api/quotes")
+        guard r["items"] is [[String: Any]] else { throw APIError(message: "摘抄列表格式无效") }
+        return r
+    }
+    static func createQuote(text: String, note: String, clientKey: String) async throws -> [String: Any] {
+        try await request("/api/quotes", method: "POST", body: ["text": text, "note": note, "client_key": clientKey])
+    }
+    static func deleteQuote(_ id: Int) async throws -> [String: Any] {
+        try await request("/api/quotes/\(id)", method: "DELETE")
+    }
 }

@@ -52,6 +52,10 @@ final class FoodMapViewController: UIViewController, UIScrollViewDelegate {
         view.backgroundColor = .systemBackground
         buildUI()
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .refresh, target: self, action: #selector(refreshData))
+        // 设置页手动同步后，回到本页自动刷新
+        NotificationCenter.default.addObserver(forName: .myfoodDataSynced, object: nil, queue: .main) { [weak self] _ in
+            self?.needsRefresh = true
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {

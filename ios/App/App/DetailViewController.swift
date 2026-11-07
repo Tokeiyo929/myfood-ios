@@ -67,6 +67,7 @@ class DetailViewController: UIViewController, UITextFieldDelegate, UITextViewDel
         scrollView.keyboardDismissMode = .onDrag
         scrollView.delaysContentTouches = false
         view.addSubview(scrollView)
+        dismissKeyboardOnBackgroundTap() // 点空白处收起键盘（名称/价格/类别/评论等所有输入框）
         stack.axis = .vertical
         stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false

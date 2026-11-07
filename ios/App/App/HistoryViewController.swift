@@ -4,8 +4,8 @@ import UIKit
 class HistoryViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     var onRecordsChanged: (() -> Void)?
     func markNeedsRefresh() { needsRefresh = true }
-    private var table: UITableView!
     private var searchBar: UISearchBar!
+    var table: UITableView! // 自测用：验证键盘收起手势/模式
     private var records: [DecoratedRecord] = []
     private var search = ""
     private var page = 1
@@ -45,8 +45,10 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
         table.register(HistoryCardCell.self, forCellReuseIdentifier: "hcard")
         table.rowHeight = UITableView.automaticDimension
         table.estimatedRowHeight = 110
+        table.keyboardDismissMode = .onDrag // 滚动列表顺手收起键盘
         table.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(table)
+        dismissKeyboardOnBackgroundTap() // 点空白处收起键盘（搜索框等所有输入框）
         let rc = UIRefreshControl()
         rc.addTarget(self, action: #selector(refresh), for: .valueChanged)
         table.refreshControl = rc
@@ -77,6 +79,10 @@ class HistoryViewController: UIViewController, UITableViewDataSource, UITableVie
         let album = UIBarButtonItem(title: "从相册选", style: .plain, target: self, action: #selector(pickAlbum))
         let camera = UIBarButtonItem(title: "拍照", style: .plain, target: self, action: #selector(pickCamera))
         navigationItem.rightBarButtonItems = [album, camera]
+        // 设置页手动同步后，回到本页自动刷新
+        NotificationCenter.default.addObserver(forName: .myfoodDataSynced, object: nil, queue: .main) { [weak self] _ in
+            self?.needsRefresh = true
+        }
     }
 
     @objc private func refresh() {

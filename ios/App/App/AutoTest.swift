@@ -77,6 +77,8 @@ enum AutoTest {
         imageView.tag = 4
         ImageLoader.shared.load(nil, into: imageView)
         check(imageView.tag == 5 && imageView.image != nil, "无图绑定使旧下载token失效并显示占位图")
+        check(history.view.gestureRecognizers?.contains { $0 is UITapGestureRecognizer } == true, "历史页注册了点击空白收起键盘手势")
+        check(history.table.keyboardDismissMode == .onDrag, "历史列表拖动收起键盘")
         TestFixture.install()
     }
 

@@ -186,3 +186,30 @@ final class Toast {
         UIView.animate(withDuration: 0.25, delay: 1.2, options: [], animations: { lb.alpha = 0 }) { _ in lb.removeFromSuperview() }
     }
 }
+
+extension UIViewController {
+    // 点击输入框以外的空白处收起键盘；不吞掉按钮/列表等控件的原有触摸
+    func dismissKeyboardOnBackgroundTap() {
+        let tap = UITapGestureRecognizer(target: self, action: #selector(backgroundTapEndEditing(_:)))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
+    }
+
+    @objc private func backgroundTapEndEditing(_ g: UITapGestureRecognizer) {
+        let loc = g.location(in: view)
+        if let hit = view.hitTest(loc, with: nil) {
+            // 点在文本输入控件内不收起，保持正常编辑
+            var cur: UIView? = hit
+            while let w = cur {
+                if w is UITextField || w is UITextView || w is UISearchBar { return }
+                cur = w.superview
+            }
+        }
+        view.endEditing(true)
+    }
+}
+
+// 手动同步后让各页面下次出现时重新拉数据
+extension Notification.Name {
+    static let myfoodDataSynced = Notification.Name("myfood.dataSynced")
+}

@@ -49,6 +49,18 @@ struct PendingMutation {
         m.name = name
         return m
     }
+    static func quoteCreate(record: [String: Any], clientKey: String, localId: Int) -> PendingMutation {
+        var m = PendingMutation(kind: "quoteCreate")
+        m.record = record
+        m.clientKey = clientKey
+        m.localId = localId
+        return m
+    }
+    static func quoteDelete(serverId: Int) -> PendingMutation {
+        var m = PendingMutation(kind: "quoteDelete")
+        m.serverId = serverId
+        return m
+    }
 
     var dict: [String: Any] {
         var d: [String: Any] = ["uuid": uuid, "kind": kind]
@@ -161,6 +173,13 @@ enum OfflineStore {
     }
 
     static func upsertRecord(_ record: [String: Any]) { mergeRecords([record]) }
+
+    // 整表重建（手动同步拉取）：保留本地未同步（负数 id）记录
+    static func rebuildRecords(_ items: [[String: Any]]) {
+        lock.lock(); defer { lock.unlock() }
+        let locals = records().values.filter { ($0["id"] as? Int ?? 0) < 0 }
+        persistRecords((Array(locals) + items).sorted(by: sortRecords))
+    }
 
     static func record(id: Int) -> [String: Any]? {
         lock.lock(); defer { lock.unlock() }
@@ -336,11 +355,82 @@ enum OfflineStore {
         return pendingList().count
     }
 
+    // MARK: 摘抄缓存
+
+    private static var quotesCache: [[String: Any]]?
+
+    private static func sortQuotes(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+        let ia = a["id"] as? Int ?? 0
+        let ib = b["id"] as? Int ?? 0
+        if (ia < 0) != (ib < 0) { return ia < 0 } // 本地新档置顶
+        if ia != ib { return ia > ib }            // 服务端按创建时间倒序返回，用 id 兜底
+        return false
+    }
+
+    private static func quotes() -> [[String: Any]] {
+        if let quotesCache { return quotesCache }
+        let raw = loadJSONUnlocked(name: "quotes.json") as? [[String: Any]] ?? []
+        quotesCache = raw
+        return raw
+    }
+
+    private static func persistQuotes(_ list: [[String: Any]]) {
+        quotesCache = list
+        saveJSONUnlocked(list, name: "quotes.json")
+    }
+
+    static func rebuildQuotes(_ items: [[String: Any]]) {
+        lock.lock(); defer { lock.unlock() }
+        // 整表重建：保留本地未同步（负数 id）记录
+        let locals = quotes().filter { ($0["id"] as? Int ?? 0) < 0 }
+        persistQuotes((locals + items).sorted(by: sortQuotes))
+    }
+
+    static func mergeQuotes(_ items: [[String: Any]]) {
+        lock.lock(); defer { lock.unlock() }
+        var byId: [Int: [String: Any]] = [:]
+        quotes().forEach { q in byId[q["id"] as? Int ?? 0] = q }
+        items.forEach { q in if let id = q["id"] as? Int { byId[id] = q } }
+        persistQuotes(byId.values.sorted(by: sortQuotes))
+    }
+
+    static func upsertQuote(_ quote: [String: Any]) { mergeQuotes([quote]) }
+
+    static func quote(id: Int) -> [String: Any]? {
+        lock.lock(); defer { lock.unlock() }
+        return quotes().first { ($0["id"] as? Int) == id }
+    }
+
+    static func removeQuote(id: Int) {
+        lock.lock(); defer { lock.unlock() }
+        persistQuotes(quotes().filter { ($0["id"] as? Int) != id })
+    }
+
+    static func cachedQuotes() -> [[String: Any]] {
+        lock.lock(); defer { lock.unlock() }
+        return quotes()
+    }
+
+    static func allocateLocalQuoteId() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        let minId = quotes().compactMap { $0["id"] as? Int }.min() ?? 0
+        return min(minId, 0) - 1
+    }
+
+    // 本地未同步摘抄被离线删除：连同 create 队列项一并撤销
+    static func cancelPendingQuoteCreate(clientKey: String) {
+        lock.lock(); defer { lock.unlock() }
+        var list = pendingList()
+        list.removeAll { $0.kind == "quoteCreate" && $0.clientKey == clientKey }
+        savePending(list)
+    }
+
     // MARK: 测试辅助
 
     static func wipeAll() {
         lock.lock(); defer { lock.unlock() }
         recordsCache = nil
+        quotesCache = []
         try? FileManager.default.removeItem(at: dirUnlocked())
         try? FileManager.default.createDirectory(at: dirUnlocked(), withIntermediateDirectories: true)
     }
@@ -459,6 +549,21 @@ enum SyncEngine {
             OfflineStore.removeRecord(id: id)
         case "ingredient":
             _ = try await API.addIngredient(m.name ?? "")
+        case "quoteCreate":
+            var rec = m.record ?? [:]
+            let res = try await API.createQuote(text: rec["text"] as? String ?? "", note: rec["note"] as? String ?? "", clientKey: m.clientKey ?? "")
+            let serverId = res["id"] as? Int
+            if let localId = m.localId, let sid = serverId {
+                var updated = rec
+                updated["id"] = sid
+                updated["day"] = OfflineStore.todayString() // 创建即今天；下次整表拉取会用服务端时间
+                OfflineStore.removeQuote(id: localId)
+                OfflineStore.upsertQuote(updated)
+            }
+        case "quoteDelete":
+            guard let id = m.serverId else { throw APIError(message: "离线队列目标缺失") }
+            _ = try await API.deleteQuote(id)
+            OfflineStore.removeQuote(id: id)
         default:
             throw APIError(message: "未知离线操作：\(m.kind)")
         }

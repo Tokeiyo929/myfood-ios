@@ -70,12 +70,23 @@ enum TestFixture {
         AppConfig.shared = nil
     }
 
+    private static func respondQuotes(request: URLRequest, url: URL, method: String) throws -> (Int, Any) {
+        if url.path == "/api/quotes" && method == "GET" { return (200, ["items": [], "total": 0]) }
+        if url.path == "/api/quotes" && method == "POST" { return (201, ["id": 501]) }
+        if url.path.hasPrefix("/api/quotes/") && method == "DELETE" { return (200, ["id": 5]) }
+        throw APIError(message: "测试端点未实现：\(method) \(url.path)")
+    }
+
     static func respond(_ request: URLRequest) throws -> (Int, Any) {
         lock.lock()
         defer { lock.unlock() }
-        requests.append(request)
         let url = request.url!
         let method = request.httpMethod ?? "GET"
+        // 摘抄页在自测启动时自动加载，不计入请求计数断言
+        if url.path.hasPrefix("/api/quotes") {
+            return try respondQuotes(request, url: url, method: method)
+        }
+        requests.append(request)
         if url.path == "/api/config" { return (200, config) }
         if url.path == "/api/categories" { return (200, ["items": [["name": "北京烤鸭", "parentcategories": "北京市"]]]) }
         if url.path == "/api/tracks/days" { return (200, ["days": []]) }
@@ -287,6 +298,18 @@ enum CoreRegression {
         trackQueue.append(["lat": 1.0, "lng": 2.0, "ts": 3.0])
         let revived = TrackUploadQueue(persistent: true)
         report(revived.pending.count == 1 && (revived.pending[0]["lat"] as? Double) == 1.0, "轨迹待传点落盘可恢复")
+
+        // 摘抄离线队列：create 同步后换服务端 id；delete 排空（fixture 先恢复，覆盖此前的断网 handler）
+        OfflineStore.wipeAll()
+        FixtureProtocol.handler = TestFixture.respond
+        OfflineStore.enqueue(.quoteCreate(record: ["text": "山川湖海", "note": "", "client_key": "q1"], clientKey: "q1", localId: -1))
+        OfflineStore.upsertQuote(["id": -1, "text": "山川湖海", "note": "", "day": OfflineStore.todayString(), "client_key": "q1"])
+        try await SyncEngine.drain() // 先排掉队列里遗留的 patch@42，再同步摘抄 create
+        report(OfflineStore.quote(id: -1) == nil && OfflineStore.quote(id: 501)?["text"] as? String == "山川湖海", "摘抄离线建档同步后换服务端 id")
+        OfflineStore.enqueue(.quoteDelete(serverId: 501))
+        try await SyncEngine.drain()
+        report(OfflineStore.quote(id: 501) == nil && OfflineStore.pendingMutations().isEmpty, "摘抄删除同步后队列排空")
+        report(OfflineStore.cachedQuotes().isEmpty, "摘抄缓存同步后一致")
 
         // 恢复 fixture 与缓存基线
         OfflineStore.wipeAll()
