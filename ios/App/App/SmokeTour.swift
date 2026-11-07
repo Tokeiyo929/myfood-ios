@@ -72,6 +72,7 @@ enum SmokeTour {
         try await shot("08-tracks")
         let today = TrackView.fmtDay(Date())
         app.daysPath = [TrackDestination(day: today)]
+        app.days.loadIfNeeded()
         try await waitUntil("每日记录") { app.days.loaded }
         try await shot("09-track-days")
         let dayToOpen = (app.days.days.first?["day"] as? String) ?? today

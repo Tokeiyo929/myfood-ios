@@ -107,6 +107,7 @@ enum TestFixture {
         defer { lock.unlock() }
         let url = request.url!
         let method = request.httpMethod ?? "GET"
+        print("[fixture] \(method) \(url.path)") // 请求追踪（进 smoke-console.txt）
         // 摘抄页在自测启动时自动加载，不计入请求计数断言
         if url.path.hasPrefix("/api/quotes") {
             return try respondQuotes(request: request, url: url, method: method)

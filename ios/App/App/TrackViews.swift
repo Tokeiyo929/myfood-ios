@@ -67,6 +67,13 @@ final class TrackDaysViewModel {
     var loaded = false
     var toast: String?
 
+    private var loadStarted = false
+    func loadIfNeeded() {
+        guard !loadStarted else { return }
+        loadStarted = true
+        Task { await load() }
+    }
+
     func load() async {
         do {
             let fetched = try await API.getTrackDays()
@@ -123,6 +130,7 @@ struct TrackRootView: View {
                     TrackDayView(day: dest.day)
                 }
         }
+        .onAppear { app.days.loadIfNeeded() }
     }
 }
 
@@ -239,6 +247,6 @@ struct TrackDaysView: View {
         .navigationTitle("每日记录")
         .navigationBarTitleDisplayMode(.inline)
         .toast($days.toast)
-        .task { await app.days.load() }
+        .onAppear { app.days.loadIfNeeded() }
     }
 }
