@@ -1,6 +1,7 @@
 import UIKit
 
 // runner 截图并回写 ack，页面就绪与截图确认均有超时断言。
+// SwiftUI 迁移后巡访改为驱动 AppModel 的页面 ViewModel（12 页：一/二/三级全覆盖）。
 enum SmokeTour {
     #if DEBUG
     static let enabled = ProcessInfo.processInfo.arguments.contains("-autoSmoke")
@@ -31,71 +32,62 @@ enum SmokeTour {
 
     @MainActor
     private static func tour() async throws {
-        // tab 布局：0 地图 | 1 轨迹 | 2 历史(中心) | 3 设置 | 4 摘抄
-        guard let tab = keyTab(), let nav = tab.viewControllers?[2] as? UINavigationController,
-              let history = nav.viewControllers.first as? HistoryViewController else { throw APIError(message: "历史页不存在") }
-        tab.selectedIndex = 2
-        try await waitUntil("历史加载") { history.loaded }
+        let app = AppModel.shared
+        // 01 历史
+        app.tab = .history
+        try await waitUntil("历史加载") { app.history.loaded }
         try await shot("01-history")
 
-        // 详情（二级）+ OCR 面板（三级）：均等加载/识别完成
-        history.smokeOpenFirst()
-        try await waitUntil("详情加载") { (nav.topViewController as? DetailViewController)?.loaded == true }
+        // 02 详情（二级）+ 03 OCR 面板（三级）
+        guard let first = app.history.records.first else { throw APIError(message: "历史列表为空") }
+        app.detail.open(recordId: first.id)
+        app.historyPath = [first.id]
+        try await waitUntil("详情加载") { app.detail.loaded }
         try await shot("02-detail")
-        if let detail = nav.topViewController as? DetailViewController {
-            detail.smokePresentOcr()
-            try await waitUntil("OCR识别") { detail.smokeOcrController?.recognized == true }
-            try await shot("03-ocr")
-            detail.smokeOcrController?.dismiss(animated: false)
-        }
-        nav.popToRootViewController(animated: false)
+        app.detail.smokePresentOcr()
+        try await waitUntil("OCR识别") { app.detail.ocrVM?.recognized == true }
+        try await shot("03-ocr")
+        app.detail.closeOcr()
+        app.historyPath = []
 
-        // 快速建档全流程（上传+定位兜底+提交），新记录应出现在列表最前
-        history.smokeQuickAdd()
-        try await waitUntil("记录保存") { history.smokeAddState == "saved" }
+        // 04 快速建档全流程（上传+定位兜底+提交），新记录应出现在列表最前
+        app.history.smokeQuickAdd()
+        try await waitUntil("记录保存") { app.history.smokeAddState == "saved" }
         try await shot("04-record")
 
-        tab.selectedIndex = 0
-        guard let map = (tab.viewControllers?[0] as? UINavigationController)?.topViewController as? FoodMapViewController else {
-            throw APIError(message: "美食地图不存在")
-        }
-        try await waitUntil("地图加载") { map.mapReady }
+        // 05 中国地图 / 06 欧洲地图 / 07 排行榜
+        app.tab = .map
+        try await waitUntil("地图加载") { app.foodMap.mapReady }
         try await shot("05-map-china")
-        map.smokeSwitchEurope()
+        app.foodMap.smokeSwitchEurope()
         try await shot("06-map-europe")
-        map.smokeOpenRank()
-        try await waitUntil("排行打开") { map.view.subviews.contains { $0 is RankModalView } }
+        app.foodMap.smokeOpenRank()
+        try await waitUntil("排行打开") { app.foodMap.rankCategory != nil }
         try await shot("07-rank")
-        map.view.subviews.compactMap { $0 as? RankModalView }.forEach { $0.close() }
+        app.foodMap.rankCategory = nil
 
-        // 轨迹（今天）+ 每日记录（二级）+ 某天轨迹（三级）
-        tab.selectedIndex = 1
-        guard let trackNav = tab.viewControllers?[1] as? UINavigationController,
-              let trackRoot = trackNav.topViewController as? MapViewController else {
-            throw APIError(message: "轨迹页不存在")
-        }
-        try await waitUntil("今日轨迹") { trackRoot.loaded }
+        // 08 轨迹（今天）/ 09 每日记录（二级）/ 10 某天轨迹（三级）
+        app.tab = .tracks
+        try await waitUntil("今日轨迹") { app.tracks.loaded }
         try await shot("08-tracks")
-        trackRoot.smokeOpenDays()
-        try await waitUntil("每日记录") { (trackNav.topViewController as? TrackDaysViewController)?.loaded == true }
+        let today = TrackView.fmtDay(Date())
+        app.daysPath = [TrackDestination(day: today)]
+        try await waitUntil("每日记录") { app.days.loaded }
         try await shot("09-track-days")
-        (trackNav.topViewController as? TrackDaysViewController)?.smokeOpenFirst()
-        try await waitUntil("某天轨迹") { trackNav.topViewController !== trackRoot && (trackNav.topViewController as? MapViewController)?.loaded == true }
+        let dayToOpen = (app.days.days.first?["day"] as? String) ?? today
+        app.dayVM.loaded = false
+        app.daysPath.append(TrackDestination(day: dayToOpen))
+        try await waitUntil("某天轨迹") { app.dayVM.loaded }
         try await shot("10-track-day")
-        trackNav.popToRootViewController(animated: false)
+        app.daysPath = []
 
-        tab.selectedIndex = 3
-        guard (tab.selectedViewController as? UINavigationController)?.topViewController is SettingsViewController else {
-            throw APIError(message: "设置页不存在")
-        }
+        // 11 设置
+        app.tab = .settings
         try await shot("11-settings")
 
-        // 摘抄页（tab 4）：等数据加载完
-        tab.selectedIndex = 4
-        guard let quotes = (tab.viewControllers?[4] as? UINavigationController)?.viewControllers.first as? QuotesViewController else {
-            throw APIError(message: "摘抄页不存在")
-        }
-        try await waitUntil("摘抄加载") { quotes.loaded }
+        // 12 摘抄
+        app.tab = .quotes
+        try await waitUntil("摘抄加载") { app.quotes.loaded }
         try await shot("12-quotes")
     }
 
@@ -114,13 +106,5 @@ enum SmokeTour {
         await Task.yield()
         try "1".write(to: dir.appendingPathComponent("now-\(name)"), atomically: true, encoding: .utf8)
         try await waitUntil("截图\(name)") { FileManager.default.fileExists(atPath: dir.appendingPathComponent("ack-\(name)").path) }
-    }
-
-    @MainActor
-    private static func keyTab() -> MainTabBarController? {
-        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-            if let tab = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController as? MainTabBarController { return tab }
-        }
-        return nil
     }
 }

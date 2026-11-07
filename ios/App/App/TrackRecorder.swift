@@ -119,5 +119,8 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     // 离线查看用：全部尚未上传的点
     func allPendingPoints() -> [[String: Any]] { queue.allPendingPoints() }
 
+    // 今天页地图定位用：最后已知位置
+    var lastKnownCoordinate: CLLocationCoordinate2D? { manager.location?.coordinate }
+
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { onError?(error.localizedDescription) }
 }

@@ -7,63 +7,55 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AA00002000000000000000AAB /* MyFoodApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002000000000000000AAA /* MyFoodApp.swift */; };
+		AA00002100000000000000AAB /* ThemeAndComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002100000000000000AAA /* ThemeAndComponents.swift */; };
+		AA00002200000000000000AAB /* RecordModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002200000000000000AAA /* RecordModel.swift */; };
+		AA00002300000000000000AAB /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002300000000000000AAA /* HistoryView.swift */; };
+		AA00002400000000000000AAB /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002400000000000000AAA /* DetailView.swift */; };
+		AA00002500000000000000AAB /* FoodMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002500000000000000AAA /* FoodMapView.swift */; };
+		AA00002600000000000000AAB /* TrackViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002600000000000000AAA /* TrackViews.swift */; };
+		AA00002700000000000000AAB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002700000000000000AAA /* SettingsView.swift */; };
+		AA00002800000000000000AAB /* QuotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002800000000000000AAA /* QuotesView.swift */; };
 		AA00001400000000000000AAB /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001400000000000000AAA /* TestSupport.swift */; };
 		AA00001300000000000000AAB /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001300000000000000AAA /* AppState.swift */; };
 		AA00001500000000000000AAB /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001500000000000000AAA /* OfflineStore.swift */; };
-		AA00001600000000000000AAB /* QuotesViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001600000000000000AAA /* QuotesViewController.swift */; };
 		AA00001700000000000000AAB /* GCJConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001700000000000000AAA /* GCJConverter.swift */; };
 		AA00000100000000000000AAB /* API.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000000000000AAA /* API.swift */; };
 		AA00000200000000000000AAB /* TrackRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000200000000000000AAA /* TrackRecorder.swift */; };
-		AA00000300000000000000AAB /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000300000000000000AAA /* MainTabBarController.swift */; };
-		AA00000400000000000000AAB /* MapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000400000000000000AAA /* MapViewController.swift */; };
-		AA00000600000000000000AAB /* HistoryViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000600000000000000AAA /* HistoryViewController.swift */; };
-		AA00000700000000000000AAB /* DetailViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000700000000000000AAA /* DetailViewController.swift */; };
-		AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000800000000000000AAA /* TrackDaysViewController.swift */; };
-		AA00000900000000000000AAB /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000900000000000000AAA /* SettingsViewController.swift */; };
-		AA00000A00000000000000AAB /* Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000A00000000000000AAA /* Helpers.swift */; };
 		AA00000B00000000000000AAB /* VoiceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000B00000000000000AAA /* VoiceManager.swift */; };
-		AA00000C00000000000000AAB /* OcrViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000C00000000000000AAA /* OcrViewController.swift */; };
-		AA00000D00000000000000AAB /* FoodMapViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000D00000000000000AAA /* FoodMapViewController.swift */; };
-		AA00000E00000000000000AAB /* RankModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000E00000000000000AAA /* RankModalView.swift */; };
 		AA00001100000000000000AAB /* SmokeTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001100000000000000AAA /* SmokeTour.swift */; };
 		AA00001200000000000000AAB /* AutoTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001200000000000000AAA /* AutoTest.swift */; };
-				504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		AA00000F00000000000000AAB /* china.geojson.json in Resources */ = {isa = PBXBuildFile; fileRef = AA00000F00000000000000AAA /* china.geojson.json */; };
 		AA00001000000000000000AAB /* europe.geojson.json in Resources */ = {isa = PBXBuildFile; fileRef = AA00001000000000000000AAA /* europe.geojson.json */; };
-				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		AA00002000000000000000AAA /* MyFoodApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyFoodApp.swift; sourceTree = "<group>"; };
+		AA00002100000000000000AAA /* ThemeAndComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeAndComponents.swift; sourceTree = "<group>"; };
+		AA00002200000000000000AAA /* RecordModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordModel.swift; sourceTree = "<group>"; };
+		AA00002300000000000000AAA /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		AA00002400000000000000AAA /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
+		AA00002500000000000000AAA /* FoodMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodMapView.swift; sourceTree = "<group>"; };
+		AA00002600000000000000AAA /* TrackViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackViews.swift; sourceTree = "<group>"; };
+		AA00002700000000000000AAA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		AA00002800000000000000AAA /* QuotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotesView.swift; sourceTree = "<group>"; };
 		AA00001400000000000000AAA /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		AA00001300000000000000AAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA00001500000000000000AAA /* OfflineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
-		AA00001600000000000000AAA /* QuotesViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotesViewController.swift; sourceTree = "<group>"; };
 		AA00001700000000000000AAA /* GCJConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GCJConverter.swift; sourceTree = "<group>"; };
 		AA00000100000000000000AAA /* API.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = API.swift; sourceTree = "<group>"; };
 		AA00000200000000000000AAA /* TrackRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRecorder.swift; sourceTree = "<group>"; };
-		AA00000300000000000000AAA /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
-		AA00000400000000000000AAA /* MapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewController.swift; sourceTree = "<group>"; };
-		AA00000600000000000000AAA /* HistoryViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewController.swift; sourceTree = "<group>"; };
-		AA00000700000000000000AAA /* DetailViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailViewController.swift; sourceTree = "<group>"; };
-		AA00000800000000000000AAA /* TrackDaysViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackDaysViewController.swift; sourceTree = "<group>"; };
-		AA00000900000000000000AAA /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
-		AA00000A00000000000000AAA /* Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helpers.swift; sourceTree = "<group>"; };
 		AA00000B00000000000000AAA /* VoiceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceManager.swift; sourceTree = "<group>"; };
-		AA00000C00000000000000AAA /* OcrViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcrViewController.swift; sourceTree = "<group>"; };
-		AA00000D00000000000000AAA /* FoodMapViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FoodMapViewController.swift; sourceTree = "<group>"; };
-		AA00000E00000000000000AAA /* RankModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankModalView.swift; sourceTree = "<group>"; };
 		AA00001100000000000000AAA /* SmokeTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTour.swift; sourceTree = "<group>"; };
 		AA00001200000000000000AAA /* AutoTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTest.swift; sourceTree = "<group>"; };
 		AA00000F00000000000000AAA /* china.geojson.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = china.geojson.json; sourceTree = "<group>"; };
 		AA00001000000000000000AAA /* europe.geojson.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = europe.geojson.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -96,30 +88,26 @@
 		504EC3061FED79650016851F /* App */ = {
 			isa = PBXGroup;
 			children = (
-				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
-				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
 				AA00000100000000000000AAA /* API.swift */,
 				AA00000200000000000000AAA /* TrackRecorder.swift */,
-				AA00000300000000000000AAA /* MainTabBarController.swift */,
-				AA00000400000000000000AAA /* MapViewController.swift */,
-				AA00000600000000000000AAA /* HistoryViewController.swift */,
-				AA00000700000000000000AAA /* DetailViewController.swift */,
-				AA00000800000000000000AAA /* TrackDaysViewController.swift */,
-				AA00000900000000000000AAA /* SettingsViewController.swift */,
-				AA00000A00000000000000AAA /* Helpers.swift */,
 				AA00000B00000000000000AAA /* VoiceManager.swift */,
-				AA00000C00000000000000AAA /* OcrViewController.swift */,
-				AA00000D00000000000000AAA /* FoodMapViewController.swift */,
-				AA00000E00000000000000AAA /* RankModalView.swift */,
 			AA00001100000000000000AAA /* SmokeTour.swift */,
 				AA00001200000000000000AAA /* AutoTest.swift */,
 				AA00001300000000000000AAA /* AppState.swift */,
 				AA00001400000000000000AAA /* TestSupport.swift */,
+				AA00002000000000000000AAA /* MyFoodApp.swift */,
+				AA00002100000000000000AAA /* ThemeAndComponents.swift */,
+				AA00002200000000000000AAA /* RecordModel.swift */,
+				AA00002300000000000000AAA /* HistoryView.swift */,
+				AA00002400000000000000AAA /* DetailView.swift */,
+				AA00002500000000000000AAA /* FoodMapView.swift */,
+				AA00002600000000000000AAA /* TrackViews.swift */,
+				AA00002700000000000000AAA /* SettingsView.swift */,
+				AA00002800000000000000AAA /* QuotesView.swift */,
 				AA00001500000000000000AAA /* OfflineStore.swift */,
-				AA00001600000000000000AAA /* QuotesViewController.swift */,
 				AA00001700000000000000AAA /* GCJConverter.swift */,
 				AA00000F00000000000000AAA /* china.geojson.json */,
 				AA00001000000000000000AAA /* europe.geojson.json */,
@@ -200,27 +188,23 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
-				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				AA00000100000000000000AAB /* API.swift in Sources */,
 				AA00000200000000000000AAB /* TrackRecorder.swift in Sources */,
-				AA00000300000000000000AAB /* MainTabBarController.swift in Sources */,
-				AA00000400000000000000AAB /* MapViewController.swift in Sources */,
-				AA00000600000000000000AAB /* HistoryViewController.swift in Sources */,
-				AA00000700000000000000AAB /* DetailViewController.swift in Sources */,
-				AA00000800000000000000AAB /* TrackDaysViewController.swift in Sources */,
-				AA00000900000000000000AAB /* SettingsViewController.swift in Sources */,
-				AA00000A00000000000000AAB /* Helpers.swift in Sources */,
 				AA00000B00000000000000AAB /* VoiceManager.swift in Sources */,
-				AA00000C00000000000000AAB /* OcrViewController.swift in Sources */,
-				AA00000D00000000000000AAB /* FoodMapViewController.swift in Sources */,
-				AA00000E00000000000000AAB /* RankModalView.swift in Sources */,
 			AA00001100000000000000AAB /* SmokeTour.swift in Sources */,
 			AA00001200000000000000AAB /* AutoTest.swift in Sources */,
 				AA00001300000000000000AAB /* AppState.swift in Sources */,
 				AA00001400000000000000AAB /* TestSupport.swift in Sources */,
 				AA00001500000000000000AAB /* OfflineStore.swift in Sources */,
-				AA00001600000000000000AAB /* QuotesViewController.swift in Sources */,
+				AA00002000000000000000AAB /* MyFoodApp.swift in Sources */,
+				AA00002100000000000000AAB /* ThemeAndComponents.swift in Sources */,
+				AA00002200000000000000AAB /* RecordModel.swift in Sources */,
+				AA00002300000000000000AAB /* HistoryView.swift in Sources */,
+				AA00002400000000000000AAB /* DetailView.swift in Sources */,
+				AA00002500000000000000AAB /* FoodMapView.swift in Sources */,
+				AA00002600000000000000AAB /* TrackViews.swift in Sources */,
+				AA00002700000000000000AAB /* SettingsView.swift in Sources */,
+				AA00002800000000000000AAB /* QuotesView.swift in Sources */,
 				AA00001700000000000000AAB /* GCJConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -287,7 +271,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -338,7 +322,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -354,7 +338,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -375,7 +359,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
