@@ -71,14 +71,28 @@ jobs:
             exit 1
           fi
 
-      - name: Core regression tests (isolated)
+      - name: Core regression compile (isolated)
+        timeout-minutes: 5
         run: |
-          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
-          /tmp/myfood-core-tests
-          bash tests/test_simulator_runner.sh
-          python3 -m unittest discover -s tests -p 'test_*.py'
+          set -o pipefail
+          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests 2>&1 | tee core-compile.log
+
+      - name: Core regression run (isolated)
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          /tmp/myfood-core-tests 2>&1 | tee core-run.log
+
+      - name: Runner script gate (isolated)
+        timeout-minutes: 5
+        run: bash tests/test_simulator_runner.sh
+
+      - name: Python unittest gate
+        timeout-minutes: 3
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
 
       - name: Launch on simulator and smoke-tour
+        timeout-minutes: 15
         run: |
           set -euo pipefail
           UDID=${{ steps.sim.outputs.udid }}
@@ -88,6 +102,7 @@ jobs:
           bash tests/run_simulator_tests.sh "$UDID" smoke > smoke-debug.txt 2>&1
 
       - name: Run in-app self tests (-autoTest, isolated)
+        timeout-minutes: 15
         run: bash tests/run_simulator_tests.sh "${{ steps.sim.outputs.udid }}" autotest > auto-test.txt 2>&1
 
       - name: Upload IPA
@@ -114,6 +129,8 @@ jobs:
             autotest/
             smoke-debug.txt
             auto-test.txt
+            core-compile.log
+            core-run.log
             *-console.txt
             ios/App/build-sim.log
             crashlogs/
