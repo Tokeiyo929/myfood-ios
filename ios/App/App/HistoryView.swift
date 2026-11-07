@@ -16,10 +16,8 @@ final class HistoryViewModel {
     var showingCamera = false
     var showingPhotoPicker = false
     var pickedItem: PhotosPickerItem?
-    #if DEBUG
-    private(set) var smokeAddState = "idle"
+    var smokeAddState = "idle"
     var recordIDs: [Int] { records.map { $0.id } }
-    #endif
     private var searchTask: Task<Void, Never>?
     private var generation = 0
 
@@ -98,9 +96,7 @@ final class HistoryViewModel {
 
     func quickAdd(image: UIImage) {
         toast = "上传中…"
-        #if DEBUG
         smokeAddState = "running"
-        #endif
         Task {
             do {
                 let config = try await AppConfig.load()
@@ -191,7 +187,7 @@ struct HistoryView: View {
     @Environment(AppModel.self) private var app
 
     var body: some View {
-        @Bindable var vm = app.history
+        @Bindable var app = app
         NavigationStack(path: $app.historyPath) {
             VStack(spacing: 0) {
                 searchField
@@ -260,7 +256,7 @@ struct HistoryView: View {
             .padding(.bottom, 16)
         }
         .refreshable { await app.history.loadRecords(reset: true) }
-        .scrollDismissesKeyboard(.onDrag)
+        .scrollDismissesKeyboard(.interactively)
     }
 }
 

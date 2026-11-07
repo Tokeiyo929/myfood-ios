@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Vision
 
 // 详情页（原 UIKit DetailViewController + OcrViewController 移植）：
@@ -89,11 +90,6 @@ final class DetailViewModel {
             toast = msg
         }
         voice.onRecordingChange = { [weak self] rec in self?.recording = rec }
-    }
-
-    func stopVoice() {
-        voice.stop()
-        recording = false
     }
 
     // MARK: - 数据
@@ -657,7 +653,7 @@ struct DetailView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
-                .scrollDismissesKeyboard(.onDrag)
+                .scrollDismissesKeyboard(.interactively)
                 .onTapGesture { hideKeyboard() }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -698,7 +694,7 @@ struct DetailView: View {
     private var stripSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(app.detail.todayStrip, id: \.id) { rec in
+                ForEach(app.detail.stripRecords, id: \.id) { rec in
                     let id = rec["id"] as? Int ?? 0
                     VStack(spacing: 3) {
                         RemoteImage(path: rec["image_path"] as? String)
@@ -837,7 +833,7 @@ struct DetailView: View {
                         .frame(minHeight: 60)
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.85)))
                     if vm.commentInput.isEmpty {
-                        Text("添加评论").font(.system(size: 14)).foregroundStyle(.placeholderText).padding(10)
+                        Text("添加评论").font(.system(size: 14)).foregroundStyle(Color(.placeholderText)).padding(10)
                     }
                 }
                 VoiceButtonView(recording: vm.recording, onStart: { vm.startVoice() }, onEnd: { vm.stopVoice() })
@@ -1092,7 +1088,7 @@ struct FlavorWheelView: View {
                     let lr = r * 1.35
                     let lp = CGPoint(x: cx + cos(p.angle) * lr, y: cy + sin(p.angle) * lr)
                     let text = DetailViewModel.flavorLabel(p.name, level: p.level, scale: scale)
-                    ctx.draw(Text(text).font(.system(size: 11)).foregroundColor(.darkGray), at: lp)
+                    ctx.draw(Text(text).font(.system(size: 11)).foregroundColor(.gray), at: lp)
                 }
             }
             .contentShape(Rectangle())

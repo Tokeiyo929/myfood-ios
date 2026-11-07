@@ -118,7 +118,7 @@ struct QuotesView: View {
                 }
             }
             .listStyle(.plain)
-            .scrollDismissesKeyboard(.onDrag)
+            .scrollDismissesKeyboard(.interactively)
             HStack(alignment: .bottom, spacing: 8) {
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $vm.input)
