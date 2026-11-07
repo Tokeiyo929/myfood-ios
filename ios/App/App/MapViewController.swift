@@ -138,7 +138,9 @@ class MapViewController: UIViewController, MKMapViewDelegate {
         var coords: [CLLocationCoordinate2D] = []
         for p in points {
             guard let lat = p["lat"] as? Double, let lng = p["lng"] as? Double else { continue }
-            coords.append(CLLocationCoordinate2D(latitude: lat, longitude: lng))
+            // 存储是原始 GPS(WGS-84)，国内地图瓦片是 GCJ-02 基准：显示前纠偏，否则偏移几百米
+            let gcj = GCJConverter.wgs84ToGcj02(lat: lat, lng: lng)
+            coords.append(CLLocationCoordinate2D(latitude: gcj.lat, longitude: gcj.lng))
         }
         if let first = coords.first {
             let r = MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800)
@@ -151,9 +153,10 @@ class MapViewController: UIViewController, MKMapViewDelegate {
     }
 
     private func addPointToLine(lat: Double, lng: Double) {
-        // 简单方式：直接在地图上画个小点 + 累积线
+        // 简单方式：直接在地图上画个小点 + 累积线（同样要纠偏后再显示）
+        let gcj = GCJConverter.wgs84ToGcj02(lat: lat, lng: lng)
         let ann = MKPointAnnotation()
-        ann.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        ann.coordinate = CLLocationCoordinate2D(latitude: gcj.lat, longitude: gcj.lng)
         mapView.addAnnotation(ann)
         if mapView.overlays.isEmpty {
             let r = MKCoordinateRegion(center: ann.coordinate, latitudinalMeters: 800, longitudinalMeters: 800)

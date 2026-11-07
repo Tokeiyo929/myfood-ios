@@ -255,6 +255,11 @@ enum CoreRegression {
         OfflineStore.wipeAll()
         report(isNetworkError(URLError(.notConnectedToInternet)), "断网错误归类为可离线")
         report(!isNetworkError(APIError(message: "服务器配置无效")), "业务错误不视为可离线")
+        // 轨迹纠偏：eviltransform 已知向量（上海）+ 境外直通
+        let shanghai = GCJConverter.wgs84ToGcj02(lat: 31.1774276, lng: 121.5272106)
+        report(abs(shanghai.lat - 31.17530398364597) < 1e-4 && abs(shanghai.lng - 121.5315426) < 1e-4, "WGS84→GCJ02 符合 eviltransform 已知向量")
+        let oversea = GCJConverter.wgs84ToGcj02(lat: 35.68, lng: 139.76) // 东京：境外直通不纠偏
+        report(oversea.lat == 35.68 && oversea.lng == 139.76, "境外坐标不纠偏")
         let older = ["id": 7, "name": "旧记录", "modify_at": ["2026-11-01"]] as [String: Any]
         let newer = ["id": 9, "name": "新记录", "modify_at": ["2026-11-03"]] as [String: Any]
         let localNew = ["id": -1, "name": "离线新档", "modify_at": [OfflineStore.todayString()]] as [String: Any]
@@ -283,6 +288,7 @@ enum CoreRegression {
         // AppConfig 断网兜底：先联网一次落盘缓存，再断网应命中缓存；无缓存必须失败
         AppConfig.shared = nil
         _ = try await AppConfig.load()
+        OfflineStore.flushIO() // 配置落盘是后台 write-behind，读缓存前先落完
         AppConfig.shared = nil
         FixtureProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
         let offlineConfig = try await AppConfig.load()
@@ -296,6 +302,7 @@ enum CoreRegression {
         OfflineStore.wipeAll()
         let trackQueue = TrackUploadQueue(persistent: true)
         trackQueue.append(["lat": 1.0, "lng": 2.0, "ts": 3.0])
+        OfflineStore.flushIO() // 待传点写盘是后台 write-behind，新实例读取前先落完
         let revived = TrackUploadQueue(persistent: true)
         report(revived.pending.count == 1 && (revived.pending[0]["lat"] as? Double) == 1.0, "轨迹待传点落盘可恢复")
 

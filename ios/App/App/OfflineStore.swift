@@ -105,6 +105,13 @@ enum OfflineStore {
         return base
     }
 
+    // 写盘统一走后台串行队列（write-behind）：主线程零磁盘 IO，卡顿源之一。
+    // 例外：pending.json 必须同步写（同步引擎自身依赖它，见 savePendingUnlocked）。
+    private static let ioQueue = DispatchQueue(label: "myfood.offline.io", qos: .utility)
+
+    // 测试与 wipeAll 前调用：等挂起的写盘全部落完
+    static func flushIO() { ioQueue.sync {} }
+
     static var dir: URL {
         lock.lock(); defer { lock.unlock() }
         return dirUnlocked()
@@ -123,7 +130,8 @@ enum OfflineStore {
     private static func saveJSONUnlocked(_ obj: Any, name: String) {
         guard JSONSerialization.isValidJSONObject(obj),
               let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
-        try? data.write(to: dirUnlocked().appendingPathComponent(name), options: .atomic)
+        let url = dirUnlocked().appendingPathComponent(name)
+        ioQueue.async { try? data.write(to: url, options: .atomic) }
     }
 
     private static func loadJSONUnlocked(name: String) -> Any? {
@@ -307,8 +315,12 @@ enum OfflineStore {
         return raw.compactMap { PendingMutation.from(dict: $0) }
     }
 
-    private static func savePending(_ list: [PendingMutation]) {
-        saveJSONUnlocked(list.map { $0.dict }, name: "pending.json")
+    // pending.json 同步写：SyncEngine 逐条处理依赖落盘即时可见，且文件很小
+    private static func savePendingUnlocked(_ list: [PendingMutation]) {
+        let raw = list.map { $0.dict }
+        guard JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw) else { return }
+        try? data.write(to: dirUnlocked().appendingPathComponent("pending.json"), options: .atomic)
     }
 
     static func pendingMutations() -> [PendingMutation] {
@@ -320,14 +332,14 @@ enum OfflineStore {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
         list.append(mutation)
-        savePending(list)
+        savePendingUnlocked(list)
     }
 
     static func removeMutation(uuid: String) {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
         list.removeAll { $0.uuid == uuid }
-        savePending(list)
+        savePendingUnlocked(list)
     }
 
     // create 成功后：把后续指向该本地记录的 patch 改写为服务端 id
@@ -338,7 +350,7 @@ enum OfflineStore {
             list[i].serverId = serverId
             list[i].clientKey = nil
         }
-        savePending(list)
+        savePendingUnlocked(list)
     }
 
     // 本地未同步记录被离线删除：连同 create 队列项与其后续 patch 一起撤销
@@ -349,7 +361,7 @@ enum OfflineStore {
         list.removeAll {
             ($0.kind == "create" && $0.clientKey == clientKey) || ($0.kind == "patch" && $0.clientKey == clientKey)
         }
-        savePending(list)
+        savePendingUnlocked(list)
     }
 
     static func pendingCount() -> Int {
@@ -424,12 +436,13 @@ enum OfflineStore {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
         list.removeAll { $0.kind == "quoteCreate" && $0.clientKey == clientKey }
-        savePending(list)
+        savePendingUnlocked(list)
     }
 
     // MARK: 测试辅助
 
     static func wipeAll() {
+        flushIO() // 先把挂起的写盘落完，防止后台写入在清库后重新生成文件
         lock.lock(); defer { lock.unlock() }
         recordsCache = nil
         quotesCache = []

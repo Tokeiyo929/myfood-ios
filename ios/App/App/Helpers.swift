@@ -9,7 +9,8 @@ enum Theme {
     static let border = UIColor(red: 0xe0/255.0, green: 0xe0/255.0, blue: 0xe0/255.0, alpha: 1)
 }
 
-// 异步图片加载 + 内存/磁盘缓存，避免 cell 复用时重复下载；断网时可用磁盘缓存展示
+// 异步图片加载 + 内存/磁盘缓存，避免 cell 复用时重复下载；断网时可用磁盘缓存展示。
+// 磁盘读取与 JPEG 解码都在后台队列（滑动列表主线程零卡顿的关键），解码用 preparingForDisplay。
 final class ImageLoader {
     static let shared = ImageLoader()
     private let cache = NSCache<NSURL, UIImage>()
@@ -23,26 +24,39 @@ final class ImageLoader {
             imageView.image = img
             return
         }
-        if url.isFileURL { // 离线建档/换图的本地原图
-            if let img = UIImage(contentsOfFile: url.path) {
+        if url.isFileURL { // 离线建档/换图的本地原图（数量少，直接读）
+            if let img = UIImage(contentsOfFile: url.path)?.preparingForDisplay() {
                 cache.setObject(img, forKey: url as NSURL)
                 imageView.image = img
             }
             return
         }
-        if let data = OfflineStore.cachedImageData(for: url), let img = UIImage(data: data) {
-            cache.setObject(img, forKey: url as NSURL)
-            imageView.image = img
-            return
-        }
-        URLSession.shared.dataTask(with: url) { data, _, _ in
-            guard let data, let img = UIImage(data: data) else { return }
-            self.cache.setObject(img, forKey: url as NSURL)
-            OfflineStore.cacheImage(data, for: url)
-            DispatchQueue.main.async {
-                if imageView.tag == tag { imageView.image = img }
+        DispatchQueue.global(qos: .userInitiated).async {
+            // 先查磁盘缓存（后台读文件），未命中再走网络
+            if let data = OfflineStore.cachedImageData(for: url) {
+                if let img = Self.decoded(data) {
+                    self.finish(img, url: url, tag: tag, imageView: imageView)
+                    return
+                }
             }
-        }.resume()
+            URLSession.shared.dataTask(with: url) { data, _, _ in
+                guard let data, let img = Self.decoded(data) else { return }
+                OfflineStore.cacheImage(data, for: url)
+                self.finish(img, url: url, tag: tag, imageView: imageView)
+            }.resume()
+        }
+    }
+
+    private func finish(_ img: UIImage, url: URL, tag: Int, imageView: UIImageView) {
+        cache.setObject(img, forKey: url as NSURL)
+        DispatchQueue.main.async {
+            if imageView.tag == tag { imageView.image = img }
+        }
+    }
+
+    // 后台预解码：UIImage(data:) 惰性解码会把整图 JPEG 解码压到主线程绘制瞬间，滑动必卡
+    private static func decoded(_ data: Data) -> UIImage? {
+        UIImage(data: data)?.preparingForDisplay() ?? (UIImage(data: data))
     }
 }
 
@@ -102,8 +116,48 @@ func nowTakenAt() -> String {
     return f.string(from: Date())
 }
 
-// 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）
-@MainActor
+// WGS-84 → GCJ-02 纠偏（eviltransform 算法移植）：CLLocationManager 给的是原始 GPS(WGS-84)，
+// 国内地图瓦片（Apple Maps 中国大陆/高德等）是 GCJ-02 基准，直绘轨迹会偏移约 100~700 米。
+// 与 Footprint / iOS-Open-GPX-Tracker 同一套做法：存储保持 WGS-84，仅在显示时转换；境外直通。
+enum GCJConverter {
+    private static let a = 6378245.0
+    private static let ee = 0.00669342162296594323
+
+    static func outOfChina(lat: Double, lng: Double) -> Bool {
+        lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
+    }
+
+    static func wgs84ToGcj02(lat: Double, lng: Double) -> (lat: Double, lng: Double) {
+        if outOfChina(lat: lat, lng: lng) { return (lat, lng) }
+        var dLat = transformLat(lng - 105.0, lat - 35.0)
+        var dLng = transformLon(lng - 105.0, lat - 35.0)
+        let radLat = lat / 180.0 * .pi
+        var magic = sin(radLat)
+        magic = 1 - ee * magic * magic
+        let sqrtMagic = magic.squareRoot()
+        dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * .pi)
+        dLng = (dLng * 180.0) / (a / sqrtMagic * cos(radLat) * .pi)
+        return (lat + dLat, lng + dLng)
+    }
+
+    private static func transformLat(_ x: Double, _ y: Double) -> Double {
+        var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * (abs(x)).squareRoot()
+        ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
+        ret += (20.0 * sin(y * .pi) + 40.0 * sin(y / 3.0 * .pi)) * 2.0 / 3.0
+        ret += (160.0 * sin(y / 12.0 * .pi) + 320.0 * sin(y * .pi / 30.0)) * 2.0 / 3.0
+        return ret
+    }
+
+    private static func transformLon(_ x: Double, _ y: Double) -> Double {
+        var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * (abs(x)).squareRoot()
+        ret += (20.0 * sin(6.0 * x * .pi) + 20.0 * sin(2.0 * x * .pi)) * 2.0 / 3.0
+        ret += (20.0 * sin(x * .pi) + 40.0 * sin(x / 3.0 * .pi)) * 2.0 / 3.0
+        ret += (150.0 * sin(x / 12.0 * .pi) + 300.0 * sin(x / 30.0 * .pi)) * 2.0 / 3.0
+        return ret
+    }
+}
+
+// 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）@MainActor
 final class LocationOnce: NSObject, CLLocationManagerDelegate {
     struct Result { let lat: Double; let lng: Double }
     private let manager = CLLocationManager()
