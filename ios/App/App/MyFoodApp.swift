@@ -5,7 +5,8 @@ import SwiftUI
 @main
 @MainActor
 struct MyFoodApp: App {
-    @State private var app = AppModel()
+    // 单例注入：SmokeTour/AutoTest 驱动 AppModel.shared，必须与 UI 用同一个实例
+    @State private var app = AppModel.shared
 
     init() {
         #if DEBUG
