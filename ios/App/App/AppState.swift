@@ -2,7 +2,7 @@ import Foundation
 
 final class AppConfig {
     static var shared: AppConfig?
-    private static var loading: Task<AppConfig, Error>?
+    private static var loading: Task<(raw: [String: Any], config: AppConfig), Error>?
     let flavorScale: [String: Int]
     let flavors: [String]
     let preferences: [(value: String, label: String, face: String, level: Int)]
@@ -54,7 +54,7 @@ final class AppConfig {
     @MainActor
     static func load() async throws -> AppConfig {
         if let config = shared { return config }
-        if let loading { return try await loading.value }
+        if let loading { return try await loading.value.config }
         let task = Task { () -> (raw: [String: Any], config: AppConfig) in
             let raw = try await API.getConfig()
             return (raw, try AppConfig(raw: raw))
