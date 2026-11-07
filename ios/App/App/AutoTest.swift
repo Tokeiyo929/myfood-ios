@@ -74,7 +74,12 @@ enum AutoTest {
         try await waitUntil { oldRequestStarted }
         mark("慢请求已开始")
         app.history.onSearchChange("测试记录 80")
-        try await waitUntil { app.history.loaded && app.history.recordIDs == [80] }
+        var lastState = ""
+        try await waitUntil {
+            let state = "loaded=\(app.history.loaded) count=\(app.history.recordIDs.count) loading=\(app.history.loading) search=\(app.history.search)"
+            if state != lastState { print("MARK poll \(state)"); lastState = state }
+            return app.history.loaded && app.history.recordIDs == [80]
+        }
         check(app.history.recordIDs == [80] && !app.history.loading, "慢旧搜索不阻挡、不覆盖最新搜索")
         mark("搜索断言后")
         // 图片加载：无图路径返回 nil
