@@ -65,7 +65,7 @@ enum AutoTest {
             return 0
         }
         // SwiftUI 迁移后 UI 回归走 ViewModel：慢旧搜索不阻挡、不覆盖最新搜索
-        func mark(_ m: String) { lines.append("MARK \(m)") }
+        func mark(_ m: String) { print("MARK \(m)") } // 进 autotest-console.txt
         let app = AppModel.shared
         app.history.needsRefresh = false
         OfflineStore.wipeAll()
