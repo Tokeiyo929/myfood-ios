@@ -106,6 +106,14 @@ enum SmokeTour {
         // 等布局提交后再通知外部截屏。
         await Task.yield()
         try "1".write(to: dir.appendingPathComponent("now-\(name)"), atomically: true, encoding: .utf8)
-        try await waitUntil("截图\(name)") { FileManager.default.fileExists(atPath: dir.appendingPathComponent("ack-\(name)").path) }
+        do {
+            try await waitUntil("截图\(name)") { FileManager.default.fileExists(atPath: dir.appendingPathComponent("ack-\(name)").path) }
+        } catch {
+            // 现场证据：ack 未出现时转储目录内容与探测结果
+            let ackExists = FileManager.default.fileExists(atPath: dir.appendingPathComponent("ack-\(name)").path)
+            let contents = (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.sorted().joined(separator: ",") ?? "unreadable"
+            print("[smoke] ack 超时 \(name) ackExists=\(ackExists) dir=[\(contents)]")
+            throw error
+        }
     }
 }
