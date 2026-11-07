@@ -84,7 +84,7 @@ enum TestFixture {
         let method = request.httpMethod ?? "GET"
         // 摘抄页在自测启动时自动加载，不计入请求计数断言
         if url.path.hasPrefix("/api/quotes") {
-            return try respondQuotes(request, url: url, method: method)
+            return try respondQuotes(request: request, url: url, method: method)
         }
         requests.append(request)
         if url.path == "/api/config" { return (200, config) }
