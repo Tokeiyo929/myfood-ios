@@ -74,7 +74,7 @@ enum TestFixture {
                 ? [["name": "奶油", "amount": 20], ["name": "面粉", "amount": 35], ["name": "鸡蛋", "amount": 15], ["name": "白砂糖", "amount": 12], ["name": "可可粉", "amount": 8], ["name": "乳酪", "amount": 6], ["name": "海盐", "amount": 1]]
                 : [["name": "奶油", "amount": 20]]
             return ["id": id, "name": name, "brand_name": id % 6 == 0 ? "" : "测试品牌",
-                    "price": id % 8 == 0 ? NSNull() : [12 + id % 40, id % 10 == 0 ? 9.9 : NSNull()],
+                    "price": id % 8 == 0 ? NSNull() : ([12 + id % 40, id % 10 == 0 ? 9.9 : NSNull()] as [Any]),
                     "categories": [cat], "category_rank": [cat: id],
                     "ingredients": ingredients, "flavors": [["name": "甜", "level": 75]],
                     "preference": pref, "comment": comments,
