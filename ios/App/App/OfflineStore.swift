@@ -178,7 +178,9 @@ enum OfflineStore {
     static func rebuildRecords(_ items: [[String: Any]]) {
         lock.lock(); defer { lock.unlock() }
         let locals = records().values.filter { ($0["id"] as? Int ?? 0) < 0 }
-        persistRecords((Array(locals) + items).sorted(by: sortRecords))
+        var byId: [Int: [String: Any]] = [:]
+        (locals + items).forEach { r in if let id = r["id"] as? Int { byId[id] = r } }
+        persistRecords(byId)
     }
 
     static func record(id: Int) -> [String: Any]? {
