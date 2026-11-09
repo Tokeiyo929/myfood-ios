@@ -256,7 +256,11 @@ extension UIImage {
         guard m > maxDimension, size.width > 0, size.height > 0 else { return self }
         let scale = maxDimension / m
         let newSize = CGSize(width: size.width * scale, height: size.height * scale)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
+        // 必须显式 scale=1：默认继承屏幕 scale(2x/3x)，像素尺寸会翻倍/三倍，
+        // 1600 上限实际输出 3200/4800px，压缩失效（历史 bug：上传图 2MB+）
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
         return renderer.image { _ in draw(in: CGRect(origin: .zero, size: newSize)) }
     }
 }
