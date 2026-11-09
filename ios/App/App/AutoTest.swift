@@ -136,6 +136,20 @@ enum AutoTest {
         ocr.touchEnded()
         check(ocr.builtText == "美记", "OCR 从已选字起拖连续取消")
 
+        let geometry = FoodMapViewModel()
+        geometry.magnify(1.1)
+        geometry.magnify(1.2)
+        check(abs(geometry.zoom - 1.2) < 0.001, "捏合倍率相对手势起点，不逐帧累乘")
+        geometry.endMagnify()
+        geometry.magnify(2)
+        check(abs(geometry.zoom - 2.4) < 0.001, "下次捏合沿用上次结束倍率")
+        let rings = [[CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1)],
+                     [CGPoint(x: 3, y: 0), CGPoint(x: 4, y: 0), CGPoint(x: 4, y: 1)]]
+        let paths = geometry.renderedPaths(size: CGSize(width: 400, height: 400), features: [.init(name: "岛", rings: rings)])
+        var starts = 0
+        paths.first?.path.forEach { if case .move = $0 { starts += 1 } }
+        check(starts == 2, "多岛地图每个环独立起笔，不连接离岛")
+
         var local = saved
         local["id"] = -1
         local["client_key"] = "local-detail"
@@ -156,6 +170,26 @@ enum AutoTest {
         quotes.delete(localQuote)
         check(OfflineStore.quote(id: -1) == nil && OfflineStore.pendingCount() == 0, "本地摘抄直接撤销创建并删除")
 
+        if let image {
+            FixtureProtocol.handler = { request in
+                let response = try TestFixture.respond(request)
+                if request.url?.path == "/api/foods", request.httpMethod == "POST" {
+                    throw URLError(.networkConnectionLost)
+                }
+                return response
+            }
+            let history = HistoryViewModel()
+            history.quickAdd(image: image)
+            try await waitUntil(timeout: 20) { history.smokeAddState != "running" }
+            let pending = OfflineStore.pendingMutations().first
+            check(history.smokeAddState == "offline-saved"
+                  && pending?.clientKey == (TestFixture.foods.last?["client_key"] as? String),
+                  "建档响应丢失后离线补传保留原 client_key")
+            FixtureProtocol.handler = TestFixture.respond
+            try await SyncEngine.drain()
+            check(TestFixture.foods.count == 81 && OfflineStore.pendingCount() == 0, "补传幂等创建不生成重复记录")
+        }
+
         FixtureProtocol.handler = { _ in (500, ["error": "服务端拒绝"]) }
         let settings = SettingsViewModel()
         await settings.runManualSync()
@@ -174,8 +208,8 @@ enum AutoTest {
     }
 
     @MainActor
-    private static func waitUntil(_ condition: @escaping () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(10)
+    private static func waitUntil(timeout: TimeInterval = 10, _ condition: @escaping () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while !condition() {
             guard Date() < deadline else { throw APIError(message: "UI回归等待超时") }
             try await Task.sleep(for: .milliseconds(10))

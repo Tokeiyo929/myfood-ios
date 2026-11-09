@@ -172,6 +172,10 @@ enum TestFixture {
             body = try JSONSerialization.jsonObject(with: data) as! [String: Any]
         }
         if url.path == "/api/foods", method == "POST" {
+            if let key = body["client_key"] as? String, !key.isEmpty,
+               let existing = foods.first(where: { $0["client_key"] as? String == key }) {
+                return (200, ["id": existing["id"] as! Int])
+            }
             let id = (foods.compactMap { $0["id"] as? Int }.max() ?? 0) + 1
             body["id"] = id
             // 镜像服务端：INSERT 时写入当天 modify_at，新记录排在列表最前

@@ -21,6 +21,7 @@ final class FoodMapViewModel {
     var toast: String?
     var features: [FoodMapGeometry.ProvinceFeature] = []
     var panBase: CGSize = .zero
+    private var pinchBase: CGFloat?
 
     var mapReady: Bool { dataReady }
 
@@ -43,8 +44,8 @@ final class FoodMapViewModel {
             let dishes = byProvince[prov] ?? []
             let isVisited = dishes.contains { visitedDishes.contains($0) }
             var path = Path()
-            var first = true
             for ring in f.rings {
+                var first = true
                 for p in ring {
                     let base = FoodMapGeometry.projectPoint(p, params: params)
                     // 缩放围绕视口中心 + 平移
@@ -116,15 +117,24 @@ final class FoodMapViewModel {
         guard r != region else { return }
         region = r
         zoom = 1
+        pinchBase = nil
         panOffset = .zero
         panBase = .zero
         selectedProvince = nil
         loadFeatures()
     }
 
+    func magnify(_ amount: CGFloat) {
+        let base = pinchBase ?? zoom
+        pinchBase = base
+        zoom = min(10, max(1, base * amount))
+    }
+
+    func endMagnify() { pinchBase = nil }
+
     // 点选省份 → 特色美食列表（visited 置顶，移植 mapTapped）
     func selectProvince(_ name: String) {
-        let province = region == "europe" ? name : FoodMapGeometry.toFullName(name)
+        let province = region == "europe" || byProvince[name] != nil ? name : FoodMapGeometry.toFullName(name)
         var dishes = (byProvince[province] ?? []).map { (name: $0, visited: visitedDishes.contains($0)) }
         dishes.sort { ($0.visited ? 1 : 0) > ($1.visited ? 1 : 0) }
         selectedProvince = province
@@ -167,6 +177,13 @@ final class FoodMapViewModel {
     func smokeOpenRank() {
         guard let first = visitedDishes.sorted().first else { return }
         openRank(category: first)
+    }
+
+    func smokeOpenProvince() {
+        switchRegion("china")
+        guard let category = visitedDishes.sorted().first,
+              let province = byProvince.first(where: { $0.value.contains(category) })?.key else { return }
+        selectProvince(province)
     }
 }
 
@@ -272,11 +289,6 @@ struct FoodMapView: View {
             vm.onAppear()
             if vm.features.isEmpty { vm.loadFeatures() }
         }
-        .sheet(isPresented: Bindable(vm).rankPresented) {
-            if let cat = vm.rankCategory {
-                RankSheetView(category: cat)
-            }
-        }
     }
 
     private func regionButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -348,11 +360,10 @@ struct FoodMapView: View {
                 },
             MagnifyGesture()
                 .onChanged { g in
-                    app.foodMap.zoom = min(10, max(1, app.foodMap.zoom * g.magnification))
+                    app.foodMap.magnify(g.magnification)
                 }
                 .onEnded { _ in
-                    // 捏合结束后把残余倍率并入基准，避免下次 onChanged 从 1 重新累乘
-                    app.foodMap.zoom = max(1, min(10, app.foodMap.zoom))
+                    app.foodMap.endMagnify()
                 }
         )
     }
@@ -409,6 +420,9 @@ struct DishPanelView: View {
         .padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 8)
         .presentationDetents([.height(300)])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: Bindable(app.foodMap).rankPresented) {
+            if let category = app.foodMap.rankCategory { RankSheetView(category: category) }
+        }
     }
 }
 

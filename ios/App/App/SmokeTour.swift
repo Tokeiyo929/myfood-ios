@@ -1,7 +1,7 @@
 import UIKit
 
 // runner 截图并回写 ack，页面就绪与截图确认均有超时断言。
-// SwiftUI 迁移后巡访改为驱动 AppModel 的页面 ViewModel（12 页：一/二/三级全覆盖）。
+// 通过 AppModel 的真实导航打开 13 个页面，等待其模型就绪。
 enum SmokeTour {
     #if DEBUG
     static let enabled = ProcessInfo.processInfo.arguments.contains("-autoSmoke")
@@ -61,10 +61,14 @@ enum SmokeTour {
         try await shot("05-map-china")
         app.foodMap.smokeSwitchEurope()
         try await shot("06-map-europe")
+        app.foodMap.smokeOpenProvince()
+        try await waitUntil("省份面板打开") { app.foodMap.selectedProvince != nil }
+        try await shot("07-province")
         app.foodMap.smokeOpenRank()
         try await waitUntil("排行打开") { app.foodMap.rankCategory != nil }
         try await shot("07-rank")
         app.foodMap.rankCategory = nil
+        app.foodMap.selectedProvince = nil
 
         // 08 轨迹（今天）/ 09 每日记录（二级）/ 10 某天轨迹（三级）
         app.tab = .tracks

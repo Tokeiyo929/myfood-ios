@@ -11,7 +11,7 @@ cd ios/App
 xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO
 ```
 
-推送 master 的 iOS、测试或 workflow 改动后，Actions 构建设备版和模拟器版、运行隔离回归与进程内自测、巡访 12 个页面并上传截图。全部通过才发布未签名 IPA；可用 Sideloadly 重签安装。其他分支可通过 `workflow_dispatch` 验证，产物仅上传 artifact。
+推送 master 的 iOS、测试或 workflow 改动后，Actions 构建设备版和模拟器版、运行隔离回归与进程内自测、巡访 13 个页面并上传截图。全部通过才发布未签名 IPA；可用 Sideloadly 重签安装。其他分支可通过 `workflow_dispatch` 验证，产物仅上传 artifact。
 
 ## 测试
 
@@ -24,7 +24,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 bash tests/test_simulator_runner.sh
 ```
 
-Debug App 的 `-autoTest` 验证 API 编解码、配置、评论草稿、离线重放和真实页面模型；`-autoSmoke` 打开历史、详情、OCR、快速建档、两张美食地图、排名、今日轨迹、每日记录、某天轨迹、设置和摘抄。runner 通过 marker/ack 握手截图。API 和远端图片共用可注入的 URLSession；fixture 未实现的请求直接失败，不访问正式服务。Release 不启用测试参数。首次授权、真实相机/语音、后台定位与锁屏恢复仍需设备验证。
+Debug App 的 `-autoTest` 验证 API 编解码、配置、评论草稿、离线重放和真实页面模型；`-autoSmoke` 打开历史、详情、OCR、快速建档、两张美食地图、省份面板、排名、今日轨迹、每日记录、某天轨迹、设置和摘抄。runner 通过 marker/ack 握手截图。API 和远端图片共用可注入的 URLSession；fixture 未实现的请求直接失败，不访问正式服务。Release 不启用测试参数。首次授权、真实相机/语音、后台定位与锁屏恢复仍需设备验证。
 
 `tests/backend_api_test.py` 为独立后端集成测试，会创建并删除临时记录，必须显式提供测试服务地址：
 

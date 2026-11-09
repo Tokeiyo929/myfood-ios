@@ -111,7 +111,7 @@ enum OfflineStore {
         return base
     }
 
-    // 写盘统一走后台串行队列（write-behind）：主线程零磁盘 IO，卡顿源之一。
+    // 缓存写盘走后台串行队列（write-behind），读取和待同步操作仍同步执行。
     // 例外：pending.json 必须同步写（同步引擎自身依赖它，见 savePendingUnlocked）。
     private static let ioQueue = DispatchQueue(label: "myfood.offline.io", qos: .utility)
 
