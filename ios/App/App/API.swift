@@ -112,12 +112,15 @@ enum API {
     static func deleteFood(_ id: Int) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "DELETE") }
     static func postTrackPoints(_ points: [[String: Any]]) async throws { _ = try await request("/api/tracks", method: "POST", body: ["points": points]) }
     static func getTrackPoints(day: String) async throws -> [[String: Any]] {
-        let r = try await request("/api/tracks?day=\(day)")
+        // 服务端点存 UTC；tz 让"属于哪天"按本机时区切（GPX 模型），东八区早上的点不再被分到前一天
+        let tz = TimeZone.current.secondsFromGMT() / 60
+        let r = try await request("/api/tracks?day=\(day)&tz=\(tz)")
         guard let points = r["points"] as? [[String: Any]] else { throw APIError(message: "轨迹格式无效") }
         return points
     }
     static func getTrackDays() async throws -> [[String: Any]] {
-        let r = try await request("/api/tracks/days")
+        let tz = TimeZone.current.secondsFromGMT() / 60
+        let r = try await request("/api/tracks/days?tz=\(tz)")
         guard let days = r["days"] as? [[String: Any]] else { throw APIError(message: "轨迹日期格式无效") }
         return days
     }
