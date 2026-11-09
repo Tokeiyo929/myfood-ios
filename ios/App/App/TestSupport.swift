@@ -48,7 +48,7 @@ enum TestFixture {
             "bad": ["value": "偏难吃", "label": "偏难吃", "level": 0, "face": "😞"],
         ],
         "pagination": ["page_size": 10, "max_page_size": 50],
-        "image": ["max_dimension": 1600, "quality": 0.8] as [String: Any],
+        "image": ["max_dimension": 640, "quality": 0.5] as [String: Any],
     ]
     static var foods: [[String: Any]] = []
     static var requests: [URLRequest] = []
