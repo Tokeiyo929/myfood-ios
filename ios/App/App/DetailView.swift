@@ -89,12 +89,17 @@ final class DetailViewModel {
                 strip = OfflineStore.cachedRecords().filter { OfflineStore.isToday($0) || $0["id"] as? Int == id }
                 cats = OfflineStore.cachedCategories()
             } else {
-                strip = try await API.getAllFoods(limit: config.maxPageSize, today: true)
+                // 三路并行:原实现串行 3 个请求,冷启动下叠加成详情页"加载很久"
+                async let stripTask = API.getAllFoods(limit: config.maxPageSize, today: true)
+                async let currentTask = API.getFoodById(id)
+                async let catsTask = API.getCategories()
+                strip = try await stripTask
+                let current = try await currentTask
                 if !strip.contains(where: { ($0["id"] as? Int) == id }) {
-                    strip.insert(try await API.getFoodById(id), at: 0)
+                    strip.insert(current, at: 0)
                 }
                 OfflineStore.mergeRecords(strip)
-                let result = try await API.getCategories()
+                let result = try await catsTask
                 cats = result["items"] as! [[String: Any]]
                 OfflineStore.saveCategories(cats)
             }
