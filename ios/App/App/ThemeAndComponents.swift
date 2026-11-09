@@ -19,7 +19,8 @@ func nowTakenAt() -> String {
 
 // 一次性定位（对齐 wx.getLocation；iOS 为 WGS84 原始坐标）
 @MainActor
-final class LocationOnce: NSObject, CLLocationManagerDelegate {
+// manager 在主线程创建，CoreLocation 在对应的主 run loop 派发 delegate 回调。
+final class LocationOnce: NSObject, @preconcurrency CLLocationManagerDelegate {
     struct Result { let lat: Double; let lng: Double }
     private let manager = CLLocationManager()
     private var cont: CheckedContinuation<Result?, Never>?

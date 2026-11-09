@@ -1074,7 +1074,7 @@ struct FlavorWheelView: View {
                         let touchAngle = atan2(p.y - cy, p.x - cx)
                         var best = 0
                         var bestDiff = CGFloat.greatestFiniteMagnitude
-                        for (i, name) in c.flavors.enumerated() {
+                        for i in c.flavors.indices {
                             let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
                             var diff = touchAngle - a
                             while diff > .pi { diff -= 2 * .pi }

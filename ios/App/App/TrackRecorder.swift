@@ -5,7 +5,8 @@ import Observation
 // 纯原生轨迹记录器：CLLocationManager 后台持续定位，锁屏也记点
 @MainActor
 @Observable
-final class TrackRecorder: NSObject, CLLocationManagerDelegate {
+// manager 在主线程创建，CoreLocation 在对应的主 run loop 派发 delegate 回调。
+final class TrackRecorder: NSObject, @preconcurrency CLLocationManagerDelegate {
     static let shared = TrackRecorder()
 
     private let manager = CLLocationManager()
@@ -62,9 +63,7 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
         if manager.authorizationStatus == .authorizedWhenInUse { manager.requestAlwaysAuthorization() }
         manager.allowsBackgroundLocationUpdates = true
         manager.showsBackgroundLocationIndicator = true
-        // 请求延迟批量定位；系统不保证固定回调间隔。
         manager.startUpdatingLocation()
-        manager.allowDeferredLocationUpdates(untilTraveled: 5, timeout: 15)
         isTracking = true
         lastError = nil
         lastSent = nil
