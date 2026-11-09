@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import Vision
+import UIKit
 
 // 详情页（原 UIKit DetailViewController + OcrViewController 移植）：
 // 图片横条（今日记录，点选切换/长按换图）+ 基本信息编辑 + 味道轮盘 + 偏好条
@@ -1043,9 +1044,15 @@ struct VoiceButtonView: View {
                     .onChanged { _ in
                         guard !pressed else { return }
                         pressed = true
+                        // 按钮小、按下视觉反馈弱：开始/结束各震一次让用户确认按到了
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         onStart()
                     }
-                    .onEnded { _ in pressed = false; onEnd() }
+                    .onEnded { _ in
+                        pressed = false
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onEnd()
+                    }
             )
     }
 }
