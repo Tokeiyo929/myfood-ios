@@ -314,6 +314,14 @@ enum OfflineStore {
         return try? Data(contentsOf: imagesDir().appendingPathComponent("c-" + sha256Hex(url.path)))
     }
 
+    // 清空远端图片磁盘缓存（手动同步后调用重拉新图；"offline:" 待传原图不动）
+    static func clearImageCache() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: imagesDir(), includingPropertiesForKeys: nil)) ?? []
+        for f in files where f.lastPathComponent.hasPrefix("c-") {
+            try? FileManager.default.removeItem(at: f)
+        }
+    }
+
     // MARK: 待同步队列
 
     private static func pendingList() -> [PendingMutation] {

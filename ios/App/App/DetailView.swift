@@ -707,7 +707,7 @@ struct DetailView: View {
                     let id = rec["id"] as? Int ?? 0
                     VStack(spacing: 3) {
                         RemoteImage(path: rec["image_path"] as? String)
-                            .frame(width: 96, height: 90)
+                            .frame(width: 96, height: 96)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(id == app.detail.recordId ? Theme.primary : .clear, lineWidth: 2)

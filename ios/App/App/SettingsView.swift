@@ -40,6 +40,7 @@ final class SettingsViewModel {
             OfflineStore.saveCategories(cats["items"] as? [[String: Any]] ?? [])
             let quotes = try await API.getQuotes()
             OfflineStore.rebuildQuotes(quotes["items"] as? [[String: Any]] ?? [])
+            RemoteImageModel.shared.clearCache() // 图片缓存一并作废，配合广播让可见图重拉
             NotificationCenter.default.post(name: .myfoodDataSynced, object: nil)
             syncStatus = "同步完成"
             refreshLog() // 重放后待上传项已翻成已到远端/失败

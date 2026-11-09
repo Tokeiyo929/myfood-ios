@@ -102,6 +102,13 @@ final class RemoteImageModel {
         }
     }
 
+    // 手动同步后清缓存：内存 + 磁盘 + URLSession 响应缓存，下次加载走网络取新图
+    func clearCache() {
+        cache.removeAllObjects()
+        OfflineStore.clearImageCache()
+        URLCache.shared.removeAllCachedResponses()
+    }
+
     nonisolated private static func decoded(_ data: Data) -> UIImage? {
         guard let image = UIImage(data: data) else { return nil }
         return image.preparingForDisplay() ?? image
@@ -124,15 +131,19 @@ struct RemoteImage: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
-        .task(id: path) {
+        .task(id: "\(path ?? "")#\(reloadEpoch)") {
             current = nil
             let image = await RemoteImageModel.shared.load(API.imageUrl(path))
             guard !Task.isCancelled else { return }
             current = image
         }
+        .onReceive(NotificationCenter.default.publisher(for: .myfoodDataSynced)) { _ in
+            reloadEpoch += 1 // 同步清了图缓，epoch 变化让 task 重跑取新图
+        }
     }
 
     @State private var current: UIImage?
+    @State private var reloadEpoch = 0
 }
 
 extension Notification.Name {
