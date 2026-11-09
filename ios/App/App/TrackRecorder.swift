@@ -89,12 +89,13 @@ final class TrackRecorder: NSObject, @preconcurrency CLLocationManagerDelegate {
             guard loc.horizontalAccuracy > 0, loc.horizontalAccuracy < 100 else { continue }
             let lat = loc.coordinate.latitude, lng = loc.coordinate.longitude
             let now = loc.timestamp.timeIntervalSince1970 * 1000
-            // 去重: 移动>2m 或 距上个点>30s
+            // 采样对齐成熟方案（GPX 源头 ~13s 中位间隔）：距上点 <15s 或移动 ≤2m 都不记。
+            // 此前仅静止去重，移动时全量记录（~1.6万点/天）；节流后同量级且路径渲染不受影响
             if let last = lastSent {
                 let dx = (lat - last.lat) * 111320
                 let dy = (lng - last.lng) * 111320 * cos(last.lat * .pi / 180)
                 let dist = (dx * dx + dy * dy).squareRoot()
-                if dist <= 2 && (now - last.t) < 30000 { continue }
+                if (now - last.t) < 15000 || dist <= 2 { continue }
             }
             lastSent = (lat, lng, now)
             if Calendar.current.isDateInToday(loc.timestamp) {
