@@ -734,9 +734,9 @@ struct DetailView: View {
         return section("基本信息") {
             HStack {
                 Spacer()
-                Button {
-                    vm.cameraMode = .ocr
-                    vm.showingPhotoPicker = true
+                Menu {
+                    Button("从相册识别") { vm.cameraMode = .ocr; vm.showingPhotoPicker = true }
+                    Button("拍照识别") { vm.cameraMode = .ocr; vm.showingCamera = true }
                 } label: {
                     Text("📷 OCR识别")
                         .font(.system(size: 13))
@@ -744,7 +744,6 @@ struct DetailView: View {
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.primary.opacity(0.5)))
                 }
-                .buttonStyle(.plain)
             }
             field("产品名称", text: $vm.name)
             field("品牌", text: $vm.brandName)
