@@ -102,7 +102,7 @@ final class HistoryViewModel {
         Task {
             do {
                 let config = try await AppConfig.load()
-                guard let jpeg = image.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                guard let jpeg = image.squareResized(maxDimension: CGFloat(config.imageMaxDimension))
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 async let uploadTask = API.uploadImage(jpegData: jpeg)
                 async let locTask = LocationOnce.fetch()
@@ -249,19 +249,23 @@ struct HistoryView: View {
     }
 }
 
-// UIImage 压缩（原 UIImage ext 移植）
+// 上传归一化：中心裁 1:1（列表/详情条/地图三处均按正方形展示，上传即裁齐、显示零二次裁切）+ 限最大边像素
 extension UIImage {
-    func resized(maxDimension: CGFloat) -> UIImage {
-        let m = max(size.width, size.height)
-        guard m > maxDimension, size.width > 0, size.height > 0 else { return self }
-        let scale = maxDimension / m
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+    func squareResized(maxDimension: CGFloat) -> UIImage {
+        let pw = size.width * scale, ph = size.height * scale
+        guard pw > 0, ph > 0 else { return self }
+        let px = max(1, Int(min(maxDimension, min(pw, ph)))) // 不放大：源比上限小就保持原边
+        let format = UIGraphicsImageRendererFormat.default()
         // 必须显式 scale=1：默认继承屏幕 scale(2x/3x)，像素尺寸会翻倍/三倍，
         // 1600 上限实际输出 3200/4800px，压缩失效（历史 bug：上传图 2MB+）
-        let format = UIGraphicsImageRendererFormat.default()
         format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
-        return renderer.image { _ in draw(in: CGRect(origin: .zero, size: newSize)) }
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: CGFloat(px), height: CGFloat(px)), format: format)
+        return renderer.image { _ in
+            // scaledToFill 等价：放大绘制居中，超出画布即被裁掉；draw(in:) 同时烘焙 EXIF 方向
+            let r = max(CGFloat(px) / size.width, CGFloat(px) / size.height)
+            let dw = size.width * r, dh = size.height * r
+            draw(in: CGRect(x: (CGFloat(px) - dw) / 2, y: (CGFloat(px) - dh) / 2, width: dw, height: dh))
+        }
     }
 }
 

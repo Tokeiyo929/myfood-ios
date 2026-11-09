@@ -375,7 +375,7 @@ final class DetailViewModel {
             var jpeg: Data?
             do {
                 let config = try await AppConfig.load()
-                guard let data = image.resized(maxDimension: CGFloat(config.imageMaxDimension))
+                guard let data = image.squareResized(maxDimension: CGFloat(config.imageMaxDimension))
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 jpeg = data
                 var meta: [String: Any] = ["taken_at": nowTakenAt()]
