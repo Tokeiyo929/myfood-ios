@@ -334,11 +334,14 @@ enum OfflineStore {
         return pendingList()
     }
 
-    static func enqueue(_ mutation: PendingMutation) {
+    // 返回 uuid 供 SyncLog 关联（待上传 → 同步引擎重放后翻状态）
+    @discardableResult
+    static func enqueue(_ mutation: PendingMutation) -> String {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
         list.append(mutation)
         savePendingUnlocked(list)
+        return mutation.uuid
     }
 
     static func removeMutation(uuid: String) {
@@ -361,13 +364,19 @@ enum OfflineStore {
 
     // 本地未同步记录被离线删除：连同 create 队列项与其后续 patch 一起撤销
     // （已改写为服务端 id 的 patch 不受影响——那条记录服务端已存在）
-    static func cancelPendingCreate(clientKey: String) {
+    // 返回被撤销项的 uuid，调用方据此把 SyncLog 对应条目标记为已撤销
+    @discardableResult
+    static func cancelPendingCreate(clientKey: String) -> [String] {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
+        let removed = list.filter {
+            ($0.kind == "create" && $0.clientKey == clientKey) || ($0.kind == "patch" && $0.clientKey == clientKey)
+        }.map { $0.uuid }
         list.removeAll {
             ($0.kind == "create" && $0.clientKey == clientKey) || ($0.kind == "patch" && $0.clientKey == clientKey)
         }
         savePendingUnlocked(list)
+        return removed
     }
 
     static func pendingCount() -> Int {
@@ -439,12 +448,15 @@ enum OfflineStore {
         return min(minId, 0) - 1
     }
 
-    // 本地未同步摘抄被离线删除：连同 create 队列项一并撤销
-    static func cancelPendingQuoteCreate(clientKey: String) {
+    // 本地未同步摘抄被离线删除：连同 create 队列项一并撤销；返回被撤销 uuid（SyncLog 用）
+    @discardableResult
+    static func cancelPendingQuoteCreate(clientKey: String) -> [String] {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
+        let removed = list.filter { $0.kind == "quoteCreate" && $0.clientKey == clientKey }.map { $0.uuid }
         list.removeAll { $0.kind == "quoteCreate" && $0.clientKey == clientKey }
         savePendingUnlocked(list)
+        return removed
     }
 
     // MARK: 测试辅助
@@ -508,8 +520,14 @@ enum SyncEngine {
         let task = Task {
             while let first = OfflineStore.pendingMutations().first {
                 // 失败保留队列和原图，手动同步显示错误；下次重试仍用同一幂等键。
-                try await apply(first)
-                OfflineStore.removeMutation(uuid: first.uuid)
+                do {
+                    try await apply(first)
+                    OfflineStore.removeMutation(uuid: first.uuid)
+                    SyncLog.mark(uuid: first.uuid, status: "synced")
+                } catch {
+                    SyncLog.mark(uuid: first.uuid, status: "failed", error: error.localizedDescription)
+                    throw error
+                }
             }
         }
         syncing = task

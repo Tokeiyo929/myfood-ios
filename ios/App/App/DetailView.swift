@@ -208,10 +208,15 @@ final class DetailViewModel {
             do {
                 do {
                     _ = try await API.addIngredient(n)
+                    SyncLog.append(kind: "ingredient", target: n, status: "synced")
                 } catch {
                     // 全局原料词典入队离线补传；记录字段本身照常追加
-                    guard isNetworkError(error) else { throw error }
-                    OfflineStore.enqueue(.ingredient(n))
+                    guard isNetworkError(error) else {
+                        SyncLog.append(kind: "ingredient", target: n, status: "failed", error: error.localizedDescription)
+                        throw error
+                    }
+                    let uuid = OfflineStore.enqueue(.ingredient(n))
+                    SyncLog.append(kind: "ingredient", target: n, status: "pending", linkUUID: uuid)
                     toast = "已离线保存，联网后自动同步"
                 }
                 var item: [String: Any] = ["name": n]
@@ -293,7 +298,8 @@ final class DetailViewModel {
             // 本地未同步记录：不发网络请求，直接入队（create 同步成功后自动改写为服务端 id）
             if id < 0 {
                 if let key = f["client_key"] as? String {
-                    OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+                    let uuid = OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+                    SyncLog.append(kind: "patch", target: name, status: "pending", linkUUID: uuid)
                 }
                 applyLocalSave(fields, base: f, newComments: newComments)
                 toast = "已离线保存，联网后自动同步"
@@ -301,12 +307,18 @@ final class DetailViewModel {
             }
             do {
                 _ = try await API.updateFoodDetails(id, fields: fields)
+                SyncLog.append(kind: "patch", target: name, status: "synced")
                 applyLocalSave(fields, base: f, newComments: newComments)
                 toast = "保存成功"
             } catch {
-                guard isNetworkError(error) else { toast = error.localizedDescription; return }
+                guard isNetworkError(error) else {
+                    SyncLog.append(kind: "patch", target: name, status: "failed", error: error.localizedDescription)
+                    toast = error.localizedDescription
+                    return
+                }
                 // 断网保存：入队 + 本地乐观更新（含 modify_at/复购，镜像服务端 PATCH 行为）
-                OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+                let uuid = OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+                SyncLog.append(kind: "patch", target: name, status: "pending", linkUUID: uuid)
                 applyLocalSave(fields, base: f, newComments: newComments)
                 toast = "已离线保存，联网后自动同步"
             }
@@ -335,9 +347,12 @@ final class DetailViewModel {
 
     func deleteCurrent() {
         let id = recordId
+        let label = targetName(id: id)
         if id < 0 {
             guard let key = stripRecords.first(where: { $0["id"] as? Int == id })?["client_key"] as? String else { return }
-            OfflineStore.cancelPendingCreate(clientKey: key)
+            for uuid in OfflineStore.cancelPendingCreate(clientKey: key) {
+                SyncLog.mark(uuid: uuid, status: "cancelled")
+            }
             OfflineStore.removeRecord(id: id)
             toast = "已删除"
             markDeletedAndPop()
@@ -346,12 +361,18 @@ final class DetailViewModel {
         Task {
             do {
                 _ = try await API.deleteFood(id)
+                SyncLog.append(kind: "delete", target: label, status: "synced")
                 OfflineStore.removeRecord(id: id)
                 toast = "已删除"
                 markDeletedAndPop()
             } catch {
-                guard isNetworkError(error) else { toast = error.localizedDescription; return }
-                OfflineStore.enqueue(.delete(serverId: id))
+                guard isNetworkError(error) else {
+                    SyncLog.append(kind: "delete", target: label, status: "failed", error: error.localizedDescription)
+                    toast = error.localizedDescription
+                    return
+                }
+                let uuid = OfflineStore.enqueue(.delete(serverId: id))
+                SyncLog.append(kind: "delete", target: label, status: "pending", linkUUID: uuid)
                 OfflineStore.removeRecord(id: id)
                 toast = "已离线删除，联网后同步"
                 markDeletedAndPop()
@@ -399,9 +420,15 @@ final class DetailViewModel {
                 if let lng = meta["longitude"] { upMeta["longitude"] = lng }
                 _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as! String, "image_metadata": upMeta])
                 applyImagePath(upload["path"] as! String, meta: upMeta)
+                SyncLog.append(kind: "patch", target: targetName(id: id), detail: "换图", status: "synced")
                 toast = "已更换"
             } catch {
-                guard isNetworkError(error), let data = jpeg else {
+                if !isNetworkError(error) {
+                    SyncLog.append(kind: "patch", target: targetName(id: id), detail: "换图", status: "failed", error: error.localizedDescription)
+                    toast = error.localizedDescription
+                    return
+                }
+                guard let data = jpeg else {
                     toast = error.localizedDescription
                     return
                 }
@@ -415,14 +442,22 @@ final class DetailViewModel {
         }
     }
 
+    // 记录名（SyncLog 展示用）：横条里查不到就退回表单名
+    private func targetName(id: Int) -> String {
+        let n = stripRecords.first(where: { ($0["id"] as? Int) == id })?["name"] as? String ?? ""
+        return n.isEmpty ? name : n
+    }
+
     private func replaceOffline(_ data: Data, meta: [String: Any]) {
         let path = OfflineStore.saveLocalImage(data)
         let fields: [String: Any] = ["image_path": path, "image_metadata": meta]
         let id = recordId
         if id > 0 {
-            OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+            let uuid = OfflineStore.enqueue(.patch(serverId: id, fields: fields))
+            SyncLog.append(kind: "patch", target: targetName(id: id), detail: "换图", status: "pending", linkUUID: uuid)
         } else if let key = stripRecords.first(where: { ($0["id"] as? Int) == id })?["client_key"] as? String {
-            OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+            let uuid = OfflineStore.enqueue(.patchLocal(clientKey: key, fields: fields))
+            SyncLog.append(kind: "patch", target: targetName(id: id), detail: "换图", status: "pending", linkUUID: uuid)
         }
         applyImagePath(path, meta: meta)
         toast = "已离线更换，联网后同步"

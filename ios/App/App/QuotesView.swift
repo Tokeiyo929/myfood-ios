@@ -50,16 +50,22 @@ final class QuotesViewModel {
                 let res = try await API.createQuote(text: text, note: "", clientKey: clientKey)
                 let id = res["id"] as! Int
                 OfflineStore.upsertQuote(["id": id, "text": text, "note": "", "day": OfflineStore.todayString()])
+                SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "synced")
                 input = ""
                 reloadFromCache()
                 toast = "已保存"
             } catch {
-                guard isNetworkError(error) else { toast = error.localizedDescription; return }
+                guard isNetworkError(error) else {
+                    SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "failed", error: error.localizedDescription)
+                    toast = error.localizedDescription
+                    return
+                }
                 // 断网摘抄：本地负数 id 记录 + 入队，恢复联网自动上传
                 let localId = OfflineStore.allocateLocalQuoteId()
                 OfflineStore.upsertQuote(["id": localId, "text": text, "note": "", "day": OfflineStore.todayString(), "client_key": clientKey])
                 let payload: [String: Any] = ["text": text, "note": "", "client_key": clientKey]
-                OfflineStore.enqueue(.quoteCreate(record: payload, clientKey: clientKey, localId: localId))
+                let uuid = OfflineStore.enqueue(.quoteCreate(record: payload, clientKey: clientKey, localId: localId))
+                SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "pending", linkUUID: uuid)
                 input = ""
                 reloadFromCache()
                 toast = "已离线保存，联网后自动同步"
@@ -69,9 +75,12 @@ final class QuotesViewModel {
 
     func delete(_ quote: [String: Any]) {
         guard let id = quote["id"] as? Int else { return }
+        let label = String((quote["text"] as? String ?? "").prefix(12))
         if id < 0 {
             guard let key = quote["client_key"] as? String else { return }
-            OfflineStore.cancelPendingQuoteCreate(clientKey: key)
+            for uuid in OfflineStore.cancelPendingQuoteCreate(clientKey: key) {
+                SyncLog.mark(uuid: uuid, status: "cancelled")
+            }
             OfflineStore.removeQuote(id: id)
             reloadFromCache()
             toast = "已删除"
@@ -80,10 +89,16 @@ final class QuotesViewModel {
         Task {
             do {
                 _ = try await API.deleteQuote(id)
+                SyncLog.append(kind: "quoteDelete", target: label, status: "synced")
                 OfflineStore.removeQuote(id: id)
             } catch {
-                guard isNetworkError(error) else { toast = error.localizedDescription; return }
-                OfflineStore.enqueue(.quoteDelete(serverId: id))
+                guard isNetworkError(error) else {
+                    SyncLog.append(kind: "quoteDelete", target: label, status: "failed", error: error.localizedDescription)
+                    toast = error.localizedDescription
+                    return
+                }
+                let uuid = OfflineStore.enqueue(.quoteDelete(serverId: id))
+                SyncLog.append(kind: "quoteDelete", target: label, status: "pending", linkUUID: uuid)
                 OfflineStore.removeQuote(id: id)
                 toast = "已离线删除，联网后同步"
             }

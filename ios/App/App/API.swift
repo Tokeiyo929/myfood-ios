@@ -62,6 +62,12 @@ enum API {
 
     // MARK: - 接口
     static func getConfig() async throws -> [String: Any] { try await request("/api/config") }
+    // 远端最新发版(CI run 号),供设置页检查更新
+    static func getLatestBuild() async throws -> Int {
+        let result = try await request("/api/version")
+        guard let build = result["build"] as? Int, build > 0 else { throw APIError(message: "版本信息无效") }
+        return build
+    }
     static func getFoods(page: Int, limit: Int, search: String = "", today: Bool = false) async throws -> [String: Any] {
         var query = URLComponents()
         query.queryItems = [URLQueryItem(name: "page", value: String(page)), URLQueryItem(name: "limit", value: String(limit))]

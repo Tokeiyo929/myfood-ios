@@ -16,6 +16,7 @@
 		AA00002600000000000000AAB /* TrackViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002600000000000000AAA /* TrackViews.swift */; };
 		AA00002700000000000000AAB /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002700000000000000AAA /* SettingsView.swift */; };
 		AA00002800000000000000AAB /* QuotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002800000000000000AAA /* QuotesView.swift */; };
+		AA00002900000000000000AAB /* SyncLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00002900000000000000AAA /* SyncLog.swift */; };
 		AA00001400000000000000AAB /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001400000000000000AAA /* TestSupport.swift */; };
 		AA00001300000000000000AAB /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001300000000000000AAA /* AppState.swift */; };
 		AA00001500000000000000AAB /* OfflineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00001500000000000000AAA /* OfflineStore.swift */; };
@@ -41,6 +42,7 @@
 		AA00002600000000000000AAA /* TrackViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackViews.swift; sourceTree = "<group>"; };
 		AA00002700000000000000AAA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		AA00002800000000000000AAA /* QuotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotesView.swift; sourceTree = "<group>"; };
+		AA00002900000000000000AAA /* SyncLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncLog.swift; sourceTree = "<group>"; };
 		AA00001400000000000000AAA /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		AA00001300000000000000AAA /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		AA00001500000000000000AAA /* OfflineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineStore.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 				AA00002600000000000000AAA /* TrackViews.swift */,
 				AA00002700000000000000AAA /* SettingsView.swift */,
 				AA00002800000000000000AAA /* QuotesView.swift */,
+				AA00002900000000000000AAA /* SyncLog.swift */,
 				AA00001500000000000000AAA /* OfflineStore.swift */,
 				AA00001700000000000000AAA /* GCJConverter.swift */,
 				AA00000F00000000000000AAA /* china.geojson.json */,
@@ -205,6 +208,7 @@
 				AA00002600000000000000AAB /* TrackViews.swift in Sources */,
 				AA00002700000000000000AAB /* SettingsView.swift in Sources */,
 				AA00002800000000000000AAB /* QuotesView.swift in Sources */,
+				AA00002900000000000000AAB /* SyncLog.swift in Sources */,
 				AA00001700000000000000AAB /* GCJConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

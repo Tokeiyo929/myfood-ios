@@ -126,6 +126,7 @@ final class HistoryViewModel {
                     record["image_path"] = upload["path"] as! String
                     record["image_metadata"] = meta
                     _ = try await API.submitFood(record)
+                    SyncLog.append(kind: "create", target: recordName(record), status: "synced")
                 } catch {
                     guard isNetworkError(error) else { throw error }
                     offlineAdd(jpeg: jpeg, record: record)
@@ -135,10 +136,17 @@ final class HistoryViewModel {
                 await loadRecords(reset: true)
                 smokeAddState = "saved"
             } catch {
+                SyncLog.append(kind: "create", target: "新记录", status: "failed", error: error.localizedDescription)
                 smokeAddState = "failed: \(error.localizedDescription)"
                 toast = error.localizedDescription
             }
         }
+    }
+
+    // 建档日志用名：OCR 可能已带名字，空则显示「新记录」
+    private func recordName(_ record: [String: Any]) -> String {
+        let n = record["name"] as? String ?? ""
+        return n.isEmpty ? "新记录" : n
     }
 
     // 断网建档：原图落盘 + 本地负数 id 记录（置顶展示）+ 入队；上传用 client_key 幂等
@@ -148,7 +156,8 @@ final class HistoryViewModel {
         let localId = OfflineStore.allocateLocalId()
         var payload = record
         payload["image_path"] = imagePath
-        OfflineStore.enqueue(.create(record: payload, clientKey: clientKey, localId: localId, localImage: imagePath))
+        let uuid = OfflineStore.enqueue(.create(record: payload, clientKey: clientKey, localId: localId, localImage: imagePath))
+        SyncLog.append(kind: "create", target: recordName(record), status: "pending", linkUUID: uuid)
         var localRecord = payload
         localRecord["id"] = localId
         localRecord["modify_at"] = [OfflineStore.todayString()]
