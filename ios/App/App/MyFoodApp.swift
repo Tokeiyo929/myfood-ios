@@ -24,11 +24,16 @@ struct MyFoodApp: App {
         }
     }
 
-    // 离线同步：启动排空队列 + 断网恢复联网时自动补传
+    // 离线同步：启动/恢复联网时先静默拉取远端存暂存（git fetch，失败静默），
+    // 再排空队列自动补传——冲突记录的队列项跳过，留给手动同步解决冲突后推送
     static func startSync() {
         NetworkMonitor.shared.start()
-        NetworkMonitor.shared.onReconnect = { Task { try? await SyncEngine.drain() } }
-        Task { try? await SyncEngine.drain() }
+        let auto: () async throws -> Void = {
+            await SyncDiff.fetchAndStash()
+            try? await SyncEngine.drain(conflictIds: SyncDiff.compute().conflictIds)
+        }
+        NetworkMonitor.shared.onReconnect = { Task { try? await auto() } }
+        Task { try? await auto() }
     }
 
     var body: some Scene {

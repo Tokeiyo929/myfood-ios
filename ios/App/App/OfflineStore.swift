@@ -523,10 +523,11 @@ final class NetworkMonitor {
 enum SyncEngine {
     private static var syncing: Task<Void, Error>?
 
-    static func drain() async throws {
+    // 重放离线队列；conflictIds 中记录对应的队列项跳过（留在队列，等冲突解决后由手动同步推送）
+    static func drain(conflictIds: Set<Int> = []) async throws {
         if let syncing { return try await syncing.value }
         let task = Task {
-            while let first = OfflineStore.pendingMutations().first {
+            while let first = OfflineStore.pendingMutations().first(where: { !$0.isConflicted(conflictIds) }) {
                 // 失败保留队列和原图，手动同步显示错误；下次重试仍用同一幂等键。
                 do {
                     try await apply(first)
@@ -569,6 +570,7 @@ enum SyncEngine {
                 OfflineStore.removeRecord(id: localId)
                 OfflineStore.upsertRecord(updated)
                 OfflineStore.resolvePending(clientKey: m.clientKey ?? "", serverId: sid)
+                SyncDiff.snapshotUpsertFood(updated) // 已推内容并入快照，避免自己推的更新被误报为远端变化
             }
             if let localPath = m.localImage { OfflineStore.removeLocalImage(localPath) }
         case "patch":
@@ -591,11 +593,13 @@ enum SyncEngine {
                 }
                 OfflineStore.upsertRecord(rec)
             }
+            SyncDiff.snapshotPatchFood(id: id, fields: fields)
             if let localPath = m.localImage { OfflineStore.removeLocalImage(localPath) }
         case "delete":
             guard let id = m.serverId else { throw APIError(message: "离线队列目标缺失") }
             _ = try await API.deleteFood(id)
             OfflineStore.removeRecord(id: id)
+            SyncDiff.snapshotRemoveFood(id: id)
         case "ingredient":
             _ = try await API.addIngredient(m.name ?? "")
         case "quoteCreate":
@@ -608,11 +612,13 @@ enum SyncEngine {
                 updated["day"] = OfflineStore.todayString() // 创建即今天；下次整表拉取会用服务端时间
                 OfflineStore.removeQuote(id: localId)
                 OfflineStore.upsertQuote(updated)
+                SyncDiff.snapshotUpsertQuote(updated)
             }
         case "quoteDelete":
             guard let id = m.serverId else { throw APIError(message: "离线队列目标缺失") }
             _ = try await API.deleteQuote(id)
             OfflineStore.removeQuote(id: id)
+            SyncDiff.snapshotRemoveQuote(id: id)
         default:
             throw APIError(message: "未知离线操作：\(m.kind)")
         }

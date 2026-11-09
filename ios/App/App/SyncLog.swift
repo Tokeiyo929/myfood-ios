@@ -21,6 +21,7 @@ struct SyncLogEntry: Identifiable {
         case "ingredient": return "原料"
         case "quoteCreate": return "摘抄"
         case "quoteDelete": return "删摘抄"
+        case "conflict": return "冲突"
         default: return kind
         }
     }

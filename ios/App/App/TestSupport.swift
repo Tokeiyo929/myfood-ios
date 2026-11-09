@@ -412,7 +412,89 @@ enum CoreRegression {
         do { try await SyncEngine.drain(); report(false, "缺 ID 的同步必须失败") }
         catch { report(OfflineStore.pendingCount() == 1, "缺 ID 的同步保留待传创建") }
 
+        // —— git 式同步 Diff：快照/暂存/三方对比/冲突解决 ——
+        let diffFoodsBackup = TestFixture.foods
+        OfflineStore.wipeAll()
+        FixtureProtocol.handler = TestFixture.respond
+        let diffFoods = try await API.getAllFoods(limit: 50)
+        let diffQuotes = (try await API.getQuotes())["items"] as! [[String: Any]]
+        OfflineStore.mergeRecords(diffFoods) // 应用内 records 缓存始终保有上次同步的数据
+        SyncDiff.initializeSnapshotIfMissing(foods: diffFoods, quotes: diffQuotes)
+        SyncDiff.stashRemote(foods: diffFoods, quotes: diffQuotes)
+        report(!SyncDiff.compute().hasDiff, "快照初始化后本地与远端无差异")
+        SyncDiff.clearStash()
+        report(!SyncDiff.compute().hasDiff, "暂存缺失只代表远端未知，不误报全量删除")
+        SyncDiff.stashRemote(foods: diffFoods, quotes: diffQuotes)
+
+        // ↑ 本地待推送：patch 入队即计；远端未动不产生冲突
+        OfflineStore.enqueue(.patch(serverId: 5, fields: ["comment": ["本地评论"]]))
+        var state = SyncDiff.compute()
+        report(state.pendingCount == 1 && state.conflicts.isEmpty, "本地待推送计入 ↑，远端未动不冲突")
+
+        // 本地与远端同改一条 → 冲突并给出字段明细；用远端后队列清空、本地取远端内容
+        if let i = TestFixture.foods.firstIndex(where: { $0["id"] as? Int == 5 }) {
+            TestFixture.foods[i]["comment"] = ["远端评论"]
+        }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        state = SyncDiff.compute()
+        report(state.remoteChangedIds == [5] && state.conflicts.count == 1
+               && state.conflicts[0].fields.contains { $0.key == "comment" && $0.remote == "远端评论" },
+               "本地与远端同改一条 → 冲突并给出字段明细")
+        SyncDiff.resolve(state.conflicts[0], choice: .remote)
+        report(OfflineStore.pendingMutations().isEmpty
+               && (OfflineStore.record(id: 5)?["comment"] as? [String]) == ["远端评论"],
+               "采用远端版本：队列清空且本地记录更新")
+        SyncDiff.rebuildSnapshot(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        SyncDiff.clearStash()
+        report(!SyncDiff.compute().hasDiff, "解决冲突并对齐快照后回到无差异")
+
+        // 远端删除：快照有、拉取没有 → ↓；与无关本地改动互不干扰，应用后本地缓存同步删除
+        OfflineStore.enqueue(.patch(serverId: 6, fields: ["comment": ["本地新评论"]]))
+        TestFixture.foods.removeAll { $0["id"] as? Int == 7 }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        state = SyncDiff.compute()
+        report(state.remoteDeletedIds == [7] && state.conflicts.isEmpty && state.pendingCount == 1,
+               "远端删除被检测且不与无关本地改动混淆")
+        SyncDiff.applyRemoteChanges()
+        report(OfflineStore.record(id: 7) == nil, "远端删除应用到本地缓存")
+
+        // 本地修改 + 远端已删 → 冲突；用本地转为重建（create 换新 client_key，不带图）
+        if var rec8 = OfflineStore.record(id: 8) { rec8["comment"] = ["本地保存的评论"]; OfflineStore.upsertRecord(rec8) }
+        OfflineStore.enqueue(.patch(serverId: 8, fields: ["comment": ["本地保存的评论"]]))
+        TestFixture.foods.removeAll { $0["id"] as? Int == 8 }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        state = SyncDiff.compute()
+        report(state.conflicts.count == 1 && state.conflicts[0].id == 8 && state.conflicts[0].remoteKind == "已删除",
+               "本地修改遇远端删除产生冲突")
+        SyncDiff.resolve(state.conflicts[0], choice: .local)
+        let diffQueue = OfflineStore.pendingMutations()
+        report(diffQueue.contains { $0.kind == "create" && $0.localId == 8 }
+               && !diffQueue.contains { $0.kind == "patch" && $0.serverId == 8 },
+               "用本地版本：远端已删的修改转为重建队列项")
+        try await SyncEngine.drain()
+        report(OfflineStore.pendingCount() == 0 && OfflineStore.record(id: 8) == nil
+               && OfflineStore.record(id: 81)?["comment"] as? [String] == ["本地保存的评论"],
+               "重建记录同步后换新服务端 id 且队列排空")
+        report(OfflineStore.record(id: 6)?["comment"] as? [String] == ["本地新评论"], "无关本地改动正常推送")
+
+        // 本地删除 + 远端有修改 → 冲突；用远端恢复远端内容并清队列
+        if let i = TestFixture.foods.firstIndex(where: { $0["id"] as? Int == 9 }) {
+            TestFixture.foods[i]["comment"] = ["远端还在改"]
+        }
+        OfflineStore.enqueue(.delete(serverId: 9))
+        OfflineStore.removeRecord(id: 9) // 镜像详情页：删除即移除本地
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        state = SyncDiff.compute()
+        report(state.conflicts.count == 1 && state.conflicts[0].id == 9
+               && state.conflicts[0].localKind == "已删除" && state.conflicts[0].remoteKind == "有修改",
+               "本地删除遇远端修改产生冲突")
+        SyncDiff.resolve(state.conflicts[0], choice: .remote)
+        report(OfflineStore.pendingMutations().isEmpty
+               && OfflineStore.record(id: 9)?["comment"] as? [String] == ["远端还在改"],
+               "采用远端版本：恢复被本地删除的记录")
+
         // 恢复 fixture 与缓存基线
+        TestFixture.foods = diffFoodsBackup
         OfflineStore.wipeAll()
         FixtureProtocol.handler = TestFixture.respond
         AppConfig.shared = nil

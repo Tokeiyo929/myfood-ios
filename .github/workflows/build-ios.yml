@@ -78,7 +78,7 @@ jobs:
         timeout-minutes: 5
         run: |
           set -o pipefail
-          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/GCJConverter.swift ios/App/App/SyncLog.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests 2>&1 | tee core-compile.log
+          swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/GCJConverter.swift ios/App/App/SyncLog.swift ios/App/App/SyncDiff.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests 2>&1 | tee core-compile.log
 
       - name: Core regression run (isolated)
         timeout-minutes: 5
