@@ -151,7 +151,7 @@ struct TrackView: View {
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            Text(vm.statusText)
+            Text(day == nil ? "\(vm.recorderStatus) · \(vm.statusText)" : vm.statusText)
                 .font(.system(size: 12))
                 .padding(6)
                 .background(Color(white: 1, opacity: 0.85), in: RoundedRectangle(cornerRadius: 6))
@@ -190,15 +190,6 @@ struct TrackView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(8)
-        .overlay(alignment: .topLeading) {
-            if day == nil {
-                Text(vm.recorderStatus)
-                    .font(.system(size: 12))
-                    .padding(6)
-                    .background(Color(white: 1, opacity: 0.85), in: RoundedRectangle(cornerRadius: 6))
-                    .padding(12)
-            }
-        }
     }
 }
 
