@@ -1055,6 +1055,8 @@ struct VoiceButtonView: View {
 
 struct FlavorWheelView: View {
     @Binding var levels: [String: Int]
+    // 一次拖动只作用一个轴：按下时锁定，松手才解除
+    @State private var activeAxis: Int?
 
     var body: some View {
         GeometryReader { geo in
@@ -1110,16 +1112,23 @@ struct FlavorWheelView: View {
                         let p = g.location
                         let cx = size.width / 2, cy = size.height / 2
                         let r = min(size.width, size.height) * 0.34
-                        // 命中最近轴（移植 nearestAxis）
-                        let touchAngle = atan2(p.y - cy, p.x - cx)
-                        var best = 0
-                        var bestDiff = CGFloat.greatestFiniteMagnitude
-                        for i in c.flavors.indices {
-                            let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
-                            var diff = touchAngle - a
-                            while diff > .pi { diff -= 2 * .pi }
-                            while diff < -.pi { diff += 2 * .pi }
-                            if abs(diff) < bestDiff { bestDiff = abs(diff); best = i }
+                        // 命中最近轴（移植 nearestAxis）；拖动中锁定首触轴，避免滑过中心时跳轴
+                        let best: Int
+                        if let locked = activeAxis, locked < c.flavors.count {
+                            best = locked
+                        } else {
+                            let touchAngle = atan2(p.y - cy, p.x - cx)
+                            var hit = 0
+                            var bestDiff = CGFloat.greatestFiniteMagnitude
+                            for i in c.flavors.indices {
+                                let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
+                                var diff = touchAngle - a
+                                while diff > .pi { diff -= 2 * .pi }
+                                while diff < -.pi { diff += 2 * .pi }
+                                if abs(diff) < bestDiff { bestDiff = abs(diff); hit = i }
+                            }
+                            best = hit
+                            activeAxis = hit
                         }
                         // 投影长度映射回 level（移植 updateLevel）
                         let a = -CGFloat.pi / 2 + CGFloat(best) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
@@ -1130,6 +1139,7 @@ struct FlavorWheelView: View {
                         let clamped = max(scale["min"]!, min(scale["max"]!, lv))
                         levels[c.flavors[best]] = clamped
                     }
+                    .onEnded { _ in activeAxis = nil }
             )
         }
     }
