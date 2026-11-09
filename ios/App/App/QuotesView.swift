@@ -24,6 +24,7 @@ final class QuotesViewModel {
             reloadFromCache()
             loaded = true
         } catch {
+            guard isNetworkError(error) else { loaded = true; toast = error.localizedDescription; return }
             let cached = OfflineStore.cachedQuotes()
             if !cached.isEmpty {
                 reloadFromCache()
@@ -47,7 +48,7 @@ final class QuotesViewModel {
             let clientKey = String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36)
             do {
                 let res = try await API.createQuote(text: text, note: "", clientKey: clientKey)
-                let id = res["id"] as? Int ?? OfflineStore.allocateLocalQuoteId()
+                let id = res["id"] as! Int
                 OfflineStore.upsertQuote(["id": id, "text": text, "note": "", "day": OfflineStore.todayString()])
                 input = ""
                 reloadFromCache()
@@ -68,20 +69,22 @@ final class QuotesViewModel {
 
     func delete(_ quote: [String: Any]) {
         guard let id = quote["id"] as? Int else { return }
+        if id < 0 {
+            guard let key = quote["client_key"] as? String else { return }
+            OfflineStore.cancelPendingQuoteCreate(clientKey: key)
+            OfflineStore.removeQuote(id: id)
+            reloadFromCache()
+            toast = "已删除"
+            return
+        }
         Task {
             do {
                 _ = try await API.deleteQuote(id)
                 OfflineStore.removeQuote(id: id)
             } catch {
                 guard isNetworkError(error) else { toast = error.localizedDescription; return }
-                if id > 0 {
-                    OfflineStore.enqueue(.quoteDelete(serverId: id))
-                    OfflineStore.removeQuote(id: id)
-                } else if let key = quote["client_key"] as? String {
-                    // 本地未同步摘抄：连同 create 队列项一起撤销
-                    OfflineStore.cancelPendingQuoteCreate(clientKey: key)
-                    OfflineStore.removeQuote(id: id)
-                }
+                OfflineStore.enqueue(.quoteDelete(serverId: id))
+                OfflineStore.removeQuote(id: id)
                 toast = "已离线删除，联网后同步"
             }
             reloadFromCache()
@@ -148,7 +151,6 @@ struct QuotesView: View {
         .toast($vm.toast)
         .onAppear { vm.onAppear() }
         .onReceive(NotificationCenter.default.publisher(for: .myfoodDataSynced)) { _ in
-            vm.needsLoad = true
             Task { await vm.load() }
         }
     }

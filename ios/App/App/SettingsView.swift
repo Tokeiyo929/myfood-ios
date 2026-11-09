@@ -15,8 +15,11 @@ final class SettingsViewModel {
 
     // 手动同步：先排空离线队列（上传），再拉取服务端最新数据；完成后广播让各页刷新
     func runManualSync() async {
-        await SyncEngine.drain()
+        guard !syncing else { return }
+        syncing = true
+        defer { syncing = false }
         do {
+            try await SyncEngine.drain()
             let config = try await AppConfig.load()
             let foods = try await API.getAllFoods(limit: config.maxPageSize)
             OfflineStore.rebuildRecords(foods)
@@ -24,17 +27,15 @@ final class SettingsViewModel {
             OfflineStore.saveCategories(cats["items"] as? [[String: Any]] ?? [])
             let quotes = try await API.getQuotes()
             OfflineStore.rebuildQuotes(quotes["items"] as? [[String: Any]] ?? [])
-            AppConfig.shared = config
             NotificationCenter.default.post(name: .myfoodDataSynced, object: nil)
             syncStatus = "同步完成"
         } catch {
-            syncStatus = "拉取最新数据失败：\(error.localizedDescription)"
+            syncStatus = "同步失败：\(error.localizedDescription)"
         }
     }
 }
 
 struct SettingsView: View {
-    @Environment(AppModel.self) private var app
     @State private var model = SettingsViewModel()
 
     var body: some View {
@@ -62,14 +63,7 @@ struct SettingsView: View {
             }
             Spacer()
             Button {
-                guard !model.syncing else { return }
-                model.syncing = true
-                Task {
-                    await model.runManualSync()
-                    model.syncing = false
-                    let pending = model.pendingCount
-                    model.syncStatus = pending > 0 ? "仍有 \(pending) 条待上传，可再试" : "已同步完成"
-                }
+                Task { await model.runManualSync() }
             } label: {
                 Text(model.syncing ? "同步中…" : "同步")
                     .font(.system(size: 14, weight: .bold))

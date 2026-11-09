@@ -12,12 +12,14 @@ on:
 jobs:
   build:
     runs-on: macos-latest
+    timeout-minutes: 45
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Build device app (unsigned)
+        timeout-minutes: 15
         working-directory: ios/App
         run: |
           set -o pipefail
@@ -57,6 +59,7 @@ jobs:
           echo "Using simulator: $UDID"
 
       - name: Build simulator app
+        timeout-minutes: 15
         working-directory: ios/App
         run: |
           set -o pipefail
@@ -137,6 +140,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Publish IPA to release
+        if: github.ref == 'refs/heads/master'
         run: |
           gh release create "ipa-${{ github.run_number }}" myfood-unsigned.ipa smoke-debug.txt auto-test.txt smoke/*.png \
             --title "MyFood 未签名 IPA (build ${{ github.run_number }})" \

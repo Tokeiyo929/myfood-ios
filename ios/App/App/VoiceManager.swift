@@ -79,13 +79,7 @@ final class VoiceManager: NSObject {
             }
         } else { speech = SFSpeechRecognizer.authorizationStatus() }
         guard speech == .authorized else { return false }
-        let session = AVAudioSession.sharedInstance()
-        if session.recordPermission == .undetermined {
-            return await withCheckedContinuation { continuation in
-                session.requestRecordPermission { continuation.resume(returning: $0) }
-            }
-        }
-        return session.recordPermission == .granted
+        return await AVAudioApplication.requestRecordPermission()
     }
 
     private func stopCapture() {

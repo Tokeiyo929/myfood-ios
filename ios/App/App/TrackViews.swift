@@ -16,12 +16,13 @@ final class TrackViewModel {
 
     func load(day: String?) async {
         viewDay = day
-        let dayString = day ?? TrackView.fmtDay(Date())
+        let dayString = day ?? OfflineStore.todayString()
         do {
             let pts = try await API.getTrackPoints(day: dayString)
             OfflineStore.saveTrackPoints(pts, day: dayString)
             apply(points: pts)
         } catch {
+            guard isNetworkError(error) else { statusText = error.localizedDescription; loaded = true; return }
             // 断网兜底：当天缓存 + 本机未上传点
             var cached = OfflineStore.cachedTrackPoints(day: dayString)
             cached += TrackRecorder.shared.pendingPoints(day: dayString)
@@ -52,11 +53,12 @@ final class TrackViewModel {
 
     // 录制中状态（今天页）
     var recorderStatus: String {
+        if let error = TrackRecorder.shared.lastError { return error }
         let offlineMark = NetworkMonitor.shared.isOnline ? "" : " · 离线(底图可能空白)"
         if TrackRecorder.shared.isTracking {
             return "记录中 · \(TrackRecorder.shared.todayPoints.count)点\(offlineMark)"
         }
-        return "未记录 · 点按开启\(offlineMark)"
+        return "未记录\(offlineMark)"
     }
 }
 
@@ -67,13 +69,6 @@ final class TrackDaysViewModel {
     var loaded = false
     var toast: String?
 
-    private var loadStarted = false
-    func loadIfNeeded() {
-        guard !loadStarted else { return }
-        loadStarted = true
-        Task { await load() }
-    }
-
     func load() async {
         do {
             let fetched = try await API.getTrackDays()
@@ -81,6 +76,7 @@ final class TrackDaysViewModel {
             days = Self.mergingPending(server: fetched)
             loaded = true
         } catch {
+            guard isNetworkError(error) else { toast = error.localizedDescription; loaded = true; return }
             // 断网兜底：历史日期缓存 + 未上传点聚合出的天
             let cached = Self.mergingPending(server: OfflineStore.cachedTrackDays())
             loaded = true
@@ -127,15 +123,18 @@ struct TrackRootView: View {
         NavigationStack(path: $app.daysPath) {
             TrackView()
                 .navigationDestination(for: TrackDestination.self) { dest in
-                    TrackDayView(day: dest.day)
+                    switch dest {
+                    case .days: TrackDaysView()
+                    case .day(let day): TrackView(day: day)
+                    }
                 }
         }
-        .onAppear { app.days.loadIfNeeded() }
     }
 }
 
-struct TrackDestination: Hashable {
-    let day: String
+enum TrackDestination: Hashable {
+    case days
+    case day(String)
 }
 
 // 轨迹 tab 根页（今天）：地图为主 + 每日记录入口（二级页）
@@ -144,13 +143,6 @@ struct TrackView: View {
     var day: String?
 
     private var vm: TrackViewModel { day == nil ? app.tracks : app.dayVM }
-
-    static func fmtDay(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
-        return f.string(from: d)
-    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -170,7 +162,7 @@ struct TrackView: View {
         .toolbar {
             if day == nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(value: TrackDestination(day: TrackView.fmtDay(Date()))) {
+                    NavigationLink(value: TrackDestination.days) {
                         Text("每日记录").font(.system(size: 15))
                     }
                 }
@@ -210,15 +202,6 @@ struct TrackView: View {
     }
 }
 
-// 某天轨迹（三级页）
-struct TrackDayView: View {
-    let day: String
-
-    var body: some View {
-        TrackView(day: day)
-    }
-}
-
 // 每日记录列表（二级页）
 struct TrackDaysView: View {
     @Environment(AppModel.self) private var app
@@ -235,7 +218,7 @@ struct TrackDaysView: View {
             ForEach(app.days.days.indices, id: \.self) { idx in
                 let d = app.days.days[idx]
                 let day = d["day"] as? String ?? ""
-                NavigationLink(value: TrackDestination(day: day)) {
+                NavigationLink(value: TrackDestination.day(day)) {
                     HStack {
                         Text(day)
                         Spacer()
@@ -247,6 +230,6 @@ struct TrackDaysView: View {
         .navigationTitle("每日记录")
         .navigationBarTitleDisplayMode(.inline)
         .toast($days.toast)
-        .onAppear { app.days.loadIfNeeded() }
+        .task { await app.days.load() }
     }
 }

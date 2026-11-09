@@ -10,7 +10,6 @@ import Vision
 final class DetailViewModel {
     var recordId = 0
     var loaded = false
-    var needsLoad = false
     var toast: String?
     var saving = false
 
@@ -28,8 +27,8 @@ final class DetailViewModel {
     var ingredients: [[String: Any]] = []
     var ingredientSearch = ""
     var ingredientAmount = ""
-    var comments: [String] = []
-    var editingCommentIndex: Int?
+    var comments: [String] { draft.comments }
+    var editingCommentIndex: Int? { draft.editingIndex }
     var commentInput = ""
     var flavorLevels: [String: Int] = [:]
     var currentPref: (value: String, label: String, face: String, level: Int)?
@@ -45,7 +44,10 @@ final class DetailViewModel {
     var pickedItem: PhotosPickerItem?
     var cameraMode: CameraMode = .replace
     var ocrVM: OCRViewModel?
-    var ocrPresented = false
+    var ocrPresented: Bool {
+        get { ocrVM != nil }
+        set { if !newValue { ocrVM = nil } }
+    }
 
     enum CameraMode { case replace, ocr }
 
@@ -56,30 +58,13 @@ final class DetailViewModel {
     let voice = VoiceManager()
     private var draft = CommentDraft()
 
-    func flavorName(_ name: String, level: Int) -> String {
-        guard let c = AppConfig.shared else { return name }
-        return Self.flavorLabel(name, level: level, scale: c.flavorScale)
-    }
-
-    static func flavorLabel(_ name: String, level: Int, scale: [String: Int]) -> String {
-        guard let low = scale["low"], let mid = scale["mid"], let high = scale["high"] else { return name }
-        if level < low { return "不" + name }
-        if level < mid { return "微" + name }
-        if level < high { return name }
-        return "太" + name
-    }
-
     func open(recordId: Int) {
         guard self.recordId != recordId || !loaded else { return }
         self.recordId = recordId
         loaded = false
-        needsLoad = true
     }
 
-    func onAppear() {
-        guard needsLoad else { return }
-        needsLoad = false
-        Task { await loadAll() }
+    init() {
         voice.onText = { [weak self] text in
             guard let self else { return }
             commentInput = voiceBase + text
@@ -95,50 +80,39 @@ final class DetailViewModel {
     // MARK: - 数据
 
     func loadAll() async {
+        let id = recordId
         var strip: [[String: Any]] = []
         var cats: [[String: Any]] = []
-        var haveStrip = false
-        var haveCats = false
         do {
             let config = try await AppConfig.load()
-            strip = try await API.getAllFoods(limit: config.maxPageSize, today: true)
-            haveStrip = true
-            if !strip.contains(where: { ($0["id"] as? Int) == recordId }) {
-                strip.insert(try await API.getFoodById(recordId), at: 0)
-            }
-            OfflineStore.mergeRecords(strip)
-            let c = try await API.getCategories()
-            cats = (c["items"] as? [[String: Any]]) ?? []
-            haveCats = true
-            OfflineStore.saveCategories(cats)
-        } catch {}
-        let haveRecord = strip.contains(where: { ($0["id"] as? Int) == recordId })
-        if !haveStrip || !haveCats || !haveRecord {
-            // 断网兜底：今天缓存 + 目标记录 + 类别缓存
-            var cached = OfflineStore.cachedRecords().filter { OfflineStore.isToday($0) }
-            if let rec = OfflineStore.record(id: recordId),
-               !cached.contains(where: { ($0["id"] as? Int) == recordId }) {
-                cached.insert(rec, at: 0)
-            }
-            if cached.contains(where: { ($0["id"] as? Int) == recordId }) {
-                strip = cached
+            if id < 0 {
+                strip = OfflineStore.cachedRecords().filter { OfflineStore.isToday($0) || $0["id"] as? Int == id }
                 cats = OfflineStore.cachedCategories()
-                haveStrip = true
-                haveCats = true
+            } else {
+                strip = try await API.getAllFoods(limit: config.maxPageSize, today: true)
+                if !strip.contains(where: { ($0["id"] as? Int) == id }) {
+                    strip.insert(try await API.getFoodById(id), at: 0)
+                }
+                OfflineStore.mergeRecords(strip)
+                let result = try await API.getCategories()
+                cats = result["items"] as! [[String: Any]]
+                OfflineStore.saveCategories(cats)
             }
+        } catch {
+            guard id == recordId else { return }
+            guard isNetworkError(error) else { toast = error.localizedDescription; return }
+            strip = OfflineStore.cachedRecords().filter { OfflineStore.isToday($0) || $0["id"] as? Int == id }
+            cats = OfflineStore.cachedCategories()
         }
-        guard haveStrip, haveCats else {
-            toast = "加载失败，请检查网络"
-            return
-        }
+        guard id == recordId else { return }
+        guard let record = strip.first(where: { $0["id"] as? Int == id }) else { toast = "未找到记录"; return }
         stripRecords = strip
         allCategories = cats.compactMap { $0["name"] as? String }
-        fill(stripRecords.first { ($0["id"] as? Int) == recordId })
+        fill(record)
         loaded = true
     }
 
-    private func fill(_ f: [String: Any]?) {
-        guard let f else { toast = "加载失败"; return }
+    private func fill(_ f: [String: Any]) {
         name = f["name"] as? String ?? ""
         brandName = f["brand_name"] as? String ?? ""
         let price = f["price"] as? [Any?]
@@ -150,7 +124,6 @@ final class DetailViewModel {
         selectedCategory = (f["categories"] as? [String])?.first ?? ""
         ingredients = f["ingredients"] as? [[String: Any]] ?? []
         draft = CommentDraft(comments: f["comment"] as? [String] ?? [])
-        editingCommentIndex = nil
         commentInput = ""
         categorySearch = ""
         categorySuggestions = []
@@ -197,9 +170,9 @@ final class DetailViewModel {
     // MARK: - 横条切换 / 类别 / 原料
 
     func selectRecord(_ id: Int) {
-        guard id != recordId else { return }
+        guard id != recordId, let record = stripRecords.first(where: { $0["id"] as? Int == id }) else { return }
         recordId = id
-        fill(stripRecords.first { ($0["id"] as? Int) == id })
+        fill(record)
     }
 
     func onCategorySearch(_ q: String) {
@@ -258,17 +231,15 @@ final class DetailViewModel {
     func editComment(_ idx: Int) {
         guard comments.indices.contains(idx) else { return }
         commentInput = comments[idx]
-        editingCommentIndex = idx
+        draft.editingIndex = idx
     }
 
     func deleteComment(_ idx: Int) {
         guard comments.indices.contains(idx) else { return }
         let deletingEdited = editingCommentIndex == idx
         draft.remove(at: idx)
-        comments = draft.comments
         if deletingEdited {
             commentInput = ""
-            editingCommentIndex = nil
         }
     }
 
@@ -290,11 +261,11 @@ final class DetailViewModel {
             var orig: Any = NSNull()
             var disc: Any = NSNull()
             if !o.isEmpty {
-                guard let ov = Double(o), ov >= 0 else { toast = "价格无效"; return }
+                guard let ov = Double(o), ov.isFinite, ov >= 0 else { toast = "价格无效"; return }
                 orig = NSNumber(value: ov)
             }
             if !dsc.isEmpty {
-                guard let dv = Double(dsc), dv >= 0 else { toast = "价格无效"; return }
+                guard let dv = Double(dsc), dv.isFinite, dv >= 0 else { toast = "价格无效"; return }
                 disc = NSNumber(value: dv)
             }
             price = [orig, disc]
@@ -339,8 +310,7 @@ final class DetailViewModel {
 
     // 保存后的本地应用（在线/离线共用）：刷新表单态 + 横条 + 磁盘缓存
     private func applyLocalSave(_ fields: [String: Any], base f: [String: Any], newComments: [String]) {
-        comments = newComments
-        editingCommentIndex = nil
+        draft = CommentDraft(comments: newComments)
         commentInput = ""
         var updated = f
         for (k, v) in fields { updated[k] = v }
@@ -353,13 +323,21 @@ final class DetailViewModel {
         currentRepurchase = updated["repurchase"] as? Int ?? 0
         prevRecordLabel = Self.prevRecordLabel(updated["modify_at"] as? [String])
         if let i = stripRecords.firstIndex(where: { ($0["id"] as? Int) == updated["id"] as? Int }) {
-            for (k, v) in fields { stripRecords[i][k] = v }
+            stripRecords[i] = updated
         }
         refreshDependents()
     }
 
     func deleteCurrent() {
         let id = recordId
+        if id < 0 {
+            guard let key = stripRecords.first(where: { $0["id"] as? Int == id })?["client_key"] as? String else { return }
+            OfflineStore.cancelPendingCreate(clientKey: key)
+            OfflineStore.removeRecord(id: id)
+            toast = "已删除"
+            markDeletedAndPop()
+            return
+        }
         Task {
             do {
                 _ = try await API.deleteFood(id)
@@ -368,13 +346,8 @@ final class DetailViewModel {
                 markDeletedAndPop()
             } catch {
                 guard isNetworkError(error) else { toast = error.localizedDescription; return }
-                if id > 0 {
-                    OfflineStore.enqueue(.delete(serverId: id))
-                    OfflineStore.removeRecord(id: id)
-                } else if let key = stripRecords.first(where: { ($0["id"] as? Int) == id })?["client_key"] as? String {
-                    OfflineStore.cancelPendingCreate(clientKey: key)
-                    OfflineStore.removeRecord(id: id)
-                }
+                OfflineStore.enqueue(.delete(serverId: id))
+                OfflineStore.removeRecord(id: id)
                 toast = "已离线删除，联网后同步"
                 markDeletedAndPop()
             }
@@ -384,7 +357,6 @@ final class DetailViewModel {
     private func markDeletedAndPop() {
         stripRecords.removeAll { ($0["id"] as? Int) == recordId }
         loaded = false
-        needsLoad = false
         recordId = 0
         refreshDependents()
         AppModel.shared.historyPath.removeAll()
@@ -483,7 +455,6 @@ final class DetailViewModel {
         vm.onApplyBrand = { [weak self] t in self?.brandName = t }
         vm.onApplyIngredient = { [weak self] t in self?.doConfirmIngredient(named: t, amount: nil) }
         ocrVM = vm
-        ocrPresented = true
     }
 
     // SmokeTour 用：合成一张大字白底图直接打开 OCR 面板（Vision zh-Hans 可稳定识别）
@@ -500,7 +471,6 @@ final class DetailViewModel {
 
     func closeOcr() {
         ocrVM = nil
-        ocrPresented = false
     }
 
     // MARK: - 语音
@@ -552,7 +522,6 @@ final class OCRViewModel {
 
     init(image: UIImage) {
         self.image = image
-        Task { await recognize() }
     }
 
     func recognize() async {
@@ -560,20 +529,16 @@ final class OCRViewModel {
         let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
         let upright = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: image.size)) }
         guard let cg = upright.cgImage else { finishRecognition([]); return }
-        let texts: [String] = await withCheckedContinuation { continuation in
-            let request = VNRecognizeTextRequest { req, _ in
-                let obs = (req.results as? [VNRecognizedTextObservation]) ?? []
-                continuation.resume(returning: obs.compactMap { $0.topCandidates(1).first?.string })
-            }
+        let texts = await Task.detached(priority: .userInitiated) {
+            let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.recognitionLanguages = ["zh-Hans"]
             request.usesLanguageCorrection = true
-            DispatchQueue.global().async {
-                let handler = VNImageRequestHandler(cgImage: cg, options: [:])
-                do { try handler.perform([request]) }
-                catch { continuation.resume(returning: []) }
-            }
-        }
+            let handler = VNImageRequestHandler(cgImage: cg, options: [:])
+            do { try handler.perform([request]) }
+            catch { return [String]() }
+            return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+        }.value
         finishRecognition(texts)
     }
 
@@ -591,9 +556,10 @@ final class OCRViewModel {
 
     // 划选：起点定 on，滑过区域连续选中（移植 ocrTouchStart/Move/End 的 line continuity）
     func touchStarted(_ idx: Int) {
-        strokeMode = true
-        lastHit = nil
-        setHit(idx)
+        let selecting = !picked.contains(idx)
+        strokeMode = selecting
+        lastHit = idx
+        setHit(idx, on: selecting)
     }
 
     func touchMoved(_ idx: Int) {
@@ -612,12 +578,10 @@ final class OCRViewModel {
         lastHit = nil
     }
 
-    private func setHit(_ idx: Int, on: Bool? = nil) {
+    private func setHit(_ idx: Int, on: Bool) {
         guard chars.indices.contains(idx) else { return }
-        if on == true { picked.insert(idx) }
-        else if on == false { picked.remove(idx) }
-        else if picked.contains(idx) { picked.remove(idx) }
-        else { picked.insert(idx) }
+        if on { picked.insert(idx) }
+        else { picked.remove(idx) }
     }
 
     func apply() {
@@ -634,6 +598,7 @@ final class OCRViewModel {
 // MARK: - 详情视图
 
 struct DetailView: View {
+    let recordId: Int
     @Environment(AppModel.self) private var app
     @State private var showDeleteConfirm = false
 
@@ -662,7 +627,10 @@ struct DetailView: View {
         .navigationTitle("详情")
         .navigationBarTitleDisplayMode(.inline)
         .toast($vm.toast)
-        .onAppear { vm.onAppear() }
+        .task(id: recordId) {
+            vm.open(recordId: recordId)
+            if !vm.loaded { await vm.loadAll() }
+        }
         .onDisappear { vm.stopVoice() }
         .confirmationDialog("确定要删除这条记录吗？此操作不可恢复", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("删除", role: .destructive) { vm.deleteCurrent() }
@@ -784,14 +752,10 @@ struct DetailView: View {
     }
 
     private var flavorSection: some View {
-        section("味道与偏好") {
+        @Bindable var vm = app.detail
+        return section("味道与偏好") {
             HStack(alignment: .top, spacing: 12) {
-                FlavorWheelView(levels: Binding(
-                    get: { app.detail.flavorLevels },
-                    set: { app.detail.flavorLevels = $0 }
-                ), onLevelChange: { name, level in
-                    app.detail.flavorLevels[name] = level
-                })
+                FlavorWheelView(levels: $vm.flavorLevels)
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: 180)
                 PreferenceTrackView(
@@ -974,6 +938,7 @@ struct OCRPanelView: View {
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .task { await ocr.recognize() }
     }
 
     // 字格网格：拖动划选（触摸点 → 格子序号），点按切换单字
@@ -1026,6 +991,7 @@ struct VoiceButtonView: View {
     let recording: Bool
     var onStart: () -> Void
     var onEnd: () -> Void
+    @State private var pressed = false
 
     var body: some View {
         Text("🎤")
@@ -1035,8 +1001,12 @@ struct VoiceButtonView: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
-                    .onChanged { _ in if !recording { onStart() } }
-                    .onEnded { _ in onEnd() }
+                    .onChanged { _ in
+                        guard !pressed else { return }
+                        pressed = true
+                        onStart()
+                    }
+                    .onEnded { _ in pressed = false; onEnd() }
             )
     }
 }
@@ -1045,7 +1015,6 @@ struct VoiceButtonView: View {
 
 struct FlavorWheelView: View {
     @Binding var levels: [String: Int]
-    var onLevelChange: (String, Int) -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -1088,8 +1057,8 @@ struct FlavorWheelView: View {
                     ctx.fill(Path(ellipseIn: CGRect(x: hp.x - 5, y: hp.y - 5, width: 10, height: 10)), with: .color(Theme.primary))
                     let lr = r * 1.35
                     let lp = CGPoint(x: cx + cos(p.angle) * lr, y: cy + sin(p.angle) * lr)
-                    let text = DetailViewModel.flavorLabel(p.name, level: p.level, scale: scale)
-                    ctx.draw(Text(text).font(.system(size: 11)).foregroundColor(.gray), at: lp)
+                    let text = c.flavorLabel(p.name, level: p.level)
+                    ctx.draw(Text(text).font(.system(size: 11)).foregroundStyle(.gray), at: lp)
                 }
             }
             .contentShape(Rectangle())
@@ -1120,7 +1089,6 @@ struct FlavorWheelView: View {
                         let lv = Int(round(proj / r * (maxLv - minLv))) + scale["min"]!
                         let clamped = max(scale["min"]!, min(scale["max"]!, lv))
                         levels[c.flavors[best]] = clamped
-                        onLevelChange(c.flavors[best], clamped)
                     }
             )
         }

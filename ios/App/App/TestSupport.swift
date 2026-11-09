@@ -108,6 +108,9 @@ enum TestFixture {
         let url = request.url!
         let method = request.httpMethod ?? "GET"
         print("[fixture] \(method) \(url.path)") // 请求追踪（进 smoke-console.txt）
+        if url.path.hasPrefix("/myfood/"), method == "GET" {
+            return (200, Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAIklEQVR4nGPUz/ZnIAUwkaSaYVQDcYCJSHVwMKqBGECyBgD7zAEJ8UHNGgAAAABJRU5ErkJggg==")!)
+        }
         // 摘抄页在自测启动时自动加载，不计入请求计数断言
         if url.path.hasPrefix("/api/quotes") {
             return try respondQuotes(request: request, url: url, method: method)
@@ -358,12 +361,52 @@ enum CoreRegression {
         FixtureProtocol.handler = TestFixture.respond
         OfflineStore.enqueue(.quoteCreate(record: ["text": "山川湖海", "note": "", "client_key": "q1"], clientKey: "q1", localId: -1))
         OfflineStore.upsertQuote(["id": -1, "text": "山川湖海", "note": "", "day": OfflineStore.todayString(), "client_key": "q1"])
-        try await SyncEngine.drain() // 先排掉队列里遗留的 patch@42，再同步摘抄 create
+        try await SyncEngine.drain()
         report(OfflineStore.quote(id: -1) == nil && OfflineStore.quote(id: 501)?["text"] as? String == "山川湖海", "摘抄离线建档同步后换服务端 id")
         OfflineStore.enqueue(.quoteDelete(serverId: 501))
         try await SyncEngine.drain()
         report(OfflineStore.quote(id: 501) == nil && OfflineStore.pendingMutations().isEmpty, "摘抄删除同步后队列排空")
         report(OfflineStore.cachedQuotes().isEmpty, "摘抄缓存同步后一致")
+
+        report(API.imageUrl("myfood/photo.jpg")?.absoluteString == BASE_URL + "/myfood/photo.jpg"
+               && API.imageUrl("/myfood/photo.jpg") == API.imageUrl("myfood/photo.jpg"), "图片相对路径统一解析")
+        for response in [[String: Any](), ["id": -1], ["id": "1"]] {
+            FixtureProtocol.handler = { _ in (200, response) }
+            do { _ = try await API.submitFood([:]); report(false, "坏建档响应必须失败") }
+            catch { report(true, "坏建档 ID 在 API 边界拒绝") }
+            do { _ = try await API.createQuote(text: "x", note: "", clientKey: "x"); report(false, "坏摘抄响应必须失败") }
+            catch { report(true, "坏摘抄 ID 在 API 边界拒绝") }
+        }
+
+        // 失败必须保留待传修改和原图；并发同步等待同一次排空完成。
+        OfflineStore.wipeAll()
+        let imagePath = OfflineStore.saveLocalImage(Data([1, 2, 3]))
+        let patch = PendingMutation.patch(serverId: 80, fields: ["image_path": imagePath])
+        var legacy = patch.dict
+        legacy.removeValue(forKey: "localImage")
+        report(PendingMutation.from(dict: legacy)?.localImage == imagePath, "旧换图队列仍恢复待上传原图")
+        OfflineStore.enqueue(patch)
+        FixtureProtocol.handler = { _ in (503, ["error": "稍后重试"]) }
+        do { try await SyncEngine.drain(); report(false, "同步错误必须报告") }
+        catch { report(error.localizedDescription == "上传失败", "同步错误传给调用方") }
+        report(OfflineStore.pendingCount() == 1 && OfflineStore.localImageData(imagePath) != nil, "HTTP 失败保留队列与原图")
+        FixtureProtocol.handler = { request in
+            if request.url?.path == "/api/upload" { return (200, ["path": "/myfood/replaced.jpg"]) }
+            return try TestFixture.respond(request)
+        }
+        async let drain1: Void = SyncEngine.drain()
+        async let drain2: Void = SyncEngine.drain()
+        try await drain1
+        try await drain2
+        let replaced = try await API.getFoodById(80)
+        report(OfflineStore.pendingCount() == 0 && replaced["image_path"] as? String == "/myfood/replaced.jpg"
+               && OfflineStore.localImageData(imagePath) == nil, "并发同步完成换图上传后才清理原图")
+
+        // 创建成功却缺 ID 时，不能把本地新档当成同步成功清掉。
+        OfflineStore.enqueue(.quoteCreate(record: ["text": "保留"], clientKey: "missing-id", localId: -2))
+        FixtureProtocol.handler = { _ in (200, [:]) }
+        do { try await SyncEngine.drain(); report(false, "缺 ID 的同步必须失败") }
+        catch { report(OfflineStore.pendingCount() == 1, "缺 ID 的同步保留待传创建") }
 
         // 恢复 fixture 与缓存基线
         OfflineStore.wipeAll()

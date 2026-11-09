@@ -60,6 +60,7 @@ final class HistoryViewModel {
             loaded = true
         } catch {
             guard requestGeneration == generation else { return }
+            guard isNetworkError(error) else { toast = error.localizedDescription; return }
             // 断网兜底：本地缓存过滤 + 本地分页
             let cached = OfflineStore.searchRecords(query)
             let slice = Array(cached.dropFirst((reqPage - 1) * limit).prefix(limit))
@@ -105,29 +106,31 @@ final class HistoryViewModel {
                     .jpegData(compressionQuality: config.imageQuality) else { throw APIError(message: "图片编码失败") }
                 async let uploadTask = API.uploadImage(jpegData: jpeg)
                 async let locTask = LocationOnce.fetch()
-                var upload: [String: Any]?
-                var uploadError: Error?
-                do { upload = try await uploadTask } catch { uploadError = error }
                 let loc = await locTask
-                guard let upload else {
-                    guard let err = uploadError else { return }
-                    try await offlineAdd(jpeg: jpeg, loc: loc, config: config, error: err)
-                    return
-                }
-                var meta = upload["metadata"] as? [String: Any] ?? [:]
-                meta["taken_at"] = nowTakenAt()
+                var meta: [String: Any] = ["taken_at": nowTakenAt()]
                 if let loc {
                     meta["latitude"] = loc.lat
                     meta["longitude"] = loc.lng
                 }
-                let record: [String: Any] = [
+                var record: [String: Any] = [
                     "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
                     "preference": config.defaultPreference, "comment": [],
-                    "image_path": upload["path"] as! String,
                     "image_metadata": meta,
-                    "client_key": String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36),
+                    "client_key": UUID().uuidString,
                 ]
-                _ = try await API.submitFood(record)
+                do {
+                    let upload = try await uploadTask
+                    if let exif = upload["metadata"] as? [String: Any] {
+                        meta.merge(exif) { local, _ in local }
+                    }
+                    record["image_path"] = upload["path"] as! String
+                    record["image_metadata"] = meta
+                    _ = try await API.submitFood(record)
+                } catch {
+                    guard isNetworkError(error) else { throw error }
+                    offlineAdd(jpeg: jpeg, record: record)
+                    return
+                }
                 toast = "已保存"
                 await loadRecords(reset: true)
                 smokeAddState = "saved"
@@ -139,41 +142,26 @@ final class HistoryViewModel {
     }
 
     // 断网建档：原图落盘 + 本地负数 id 记录（置顶展示）+ 入队；上传用 client_key 幂等
-    private func offlineAdd(jpeg: Data, loc: LocationOnce.Result?, config: AppConfig, error: Error) async throws {
-        guard isNetworkError(error) else { throw error }
+    private func offlineAdd(jpeg: Data, record: [String: Any]) {
         let imagePath = OfflineStore.saveLocalImage(jpeg)
-        var meta: [String: Any] = ["taken_at": nowTakenAt()]
-        if let loc {
-            meta["latitude"] = loc.lat
-            meta["longitude"] = loc.lng
-        }
-        let clientKey = String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + "-" + String(Int.random(in: 0..<1_000_000), radix: 36)
+        let clientKey = record["client_key"] as! String
         let localId = OfflineStore.allocateLocalId()
-        let localRecord: [String: Any] = [
-            "id": localId, "name": "", "brand_name": "", "price": NSNull(),
-            "categories": [], "ingredients": [], "flavors": [],
-            "preference": config.defaultPreference, "comment": [], "worth_it": "",
-            "image_path": imagePath, "image_metadata": meta, "category_rank": [:],
-            "modify_at": [OfflineStore.todayString()], "repurchase": 0, "client_key": clientKey,
-        ]
-        var payload = localRecord
-        payload.removeValue(forKey: "id")
+        var payload = record
+        payload["image_path"] = imagePath
         OfflineStore.enqueue(.create(record: payload, clientKey: clientKey, localId: localId, localImage: imagePath))
+        var localRecord = payload
+        localRecord["id"] = localId
+        localRecord["modify_at"] = [OfflineStore.todayString()]
         OfflineStore.upsertRecord(localRecord)
         smokeAddState = "offline-saved"
         toast = "已离线保存，联网后自动同步"
-        await reloadFromCache(reset: true)
+        reloadFromCache()
     }
 
-    private func reloadFromCache(reset: Bool) async {
+    private func reloadFromCache() {
         let cached = OfflineStore.searchRecords(search)
         let limit = AppConfig.shared?.pageSize ?? 10
-        let reqPage = reset ? 1 : page + 1
-        let slice = Array(cached.dropFirst((reqPage - 1) * limit).prefix(limit))
-        let decorated = slice.map { RecordDecorator.decorate($0) }
-        records = reset ? decorated : records + decorated
-        page = reqPage
-        hasMore = records.count < cached.count
+        apply(items: Array(cached.prefix(limit)), reset: true, reqPage: 1, total: cached.count)
         loaded = true
     }
 
@@ -205,8 +193,7 @@ struct HistoryView: View {
                 }
             }
             .navigationDestination(for: Int.self) { recordId in
-                DetailView()
-                    .onAppear { app.detail.open(recordId: recordId) }
+                DetailView(recordId: recordId)
             }
             .toast($vm.toast)
             .onAppear { vm.onAppear() }

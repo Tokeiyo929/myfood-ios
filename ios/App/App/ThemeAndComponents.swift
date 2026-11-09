@@ -74,36 +74,36 @@ final class RemoteImageModel {
     static let shared = RemoteImageModel()
     private let cache = NSCache<NSURL, UIImage>()
 
-    func cached(_ url: URL?) -> UIImage? {
-        guard let url else { return nil }
-        return cache.object(forKey: url as NSURL)
-    }
-
     func load(_ url: URL?) async -> UIImage? {
         guard let url else { return nil }
         if let img = cache.object(forKey: url as NSURL) { return img }
-        if url.isFileURL { // 离线建档/换图的本地原图
-            let img = UIImage(contentsOfFile: url.path)?.preparingForDisplay()
-            if let img { cache.setObject(img, forKey: url as NSURL) }
-            return img
-        }
-        if let data = OfflineStore.cachedImageData(for: url), let img = Self.decoded(data) {
+        let diskImage = await Task.detached(priority: .utility) {
+            if url.isFileURL { return UIImage(contentsOfFile: url.path)?.preparingForDisplay() }
+            return OfflineStore.cachedImageData(for: url).flatMap(Self.decoded)
+        }.value
+        if let img = diskImage {
             cache.setObject(img, forKey: url as NSURL)
             return img
         }
+        guard !url.isFileURL else { return nil }
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            guard let img = Self.decoded(data) else { return nil }
+            let (data, response) = try await API.session.data(from: url)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+            let decoded = await Task.detached(priority: .utility) {
+                OfflineStore.cacheImage(data, for: url)
+                return Self.decoded(data)
+            }.value
+            guard let img = decoded else { return nil }
             cache.setObject(img, forKey: url as NSURL)
-            OfflineStore.cacheImage(data, for: url)
             return img
         } catch {
             return nil
         }
     }
 
-    private static func decoded(_ data: Data) -> UIImage? {
-        UIImage(data: data)?.preparingForDisplay() ?? (UIImage(data: data))
+    nonisolated private static func decoded(_ data: Data) -> UIImage? {
+        guard let image = UIImage(data: data) else { return nil }
+        return image.preparingForDisplay() ?? image
     }
 }
 
@@ -124,22 +124,14 @@ struct RemoteImage: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
         .task(id: path) {
-            guard let url = OfflineImage.url(path), current == nil else { return }
-            current = await RemoteImageModel.shared.load(url)
+            current = nil
+            let image = await RemoteImageModel.shared.load(API.imageUrl(path))
+            guard !Task.isCancelled else { return }
+            current = image
         }
     }
 
     @State private var current: UIImage?
-}
-
-// image_path 解析：offline:<name> → 本地文件；http → 直连；相对 → BASE_URL
-enum OfflineImage {
-    static func url(_ path: String?) -> URL? {
-        guard let p = path, !p.isEmpty else { return nil }
-        if p.hasPrefix("offline:") { return OfflineStore.localImageURL(p) }
-        if p.hasPrefix("http") { return URL(string: p) }
-        return URL(string: BASE_URL + p)
-    }
 }
 
 extension Notification.Name {

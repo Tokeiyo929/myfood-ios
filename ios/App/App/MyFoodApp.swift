@@ -27,8 +27,8 @@ struct MyFoodApp: App {
     // 离线同步：启动排空队列 + 断网恢复联网时自动补传
     static func startSync() {
         NetworkMonitor.shared.start()
-        NetworkMonitor.shared.onReconnect = { Task { await SyncEngine.drain() } }
-        Task { await SyncEngine.drain() }
+        NetworkMonitor.shared.onReconnect = { Task { try? await SyncEngine.drain() } }
+        Task { try? await SyncEngine.drain() }
     }
 
     var body: some Scene {
@@ -49,7 +49,7 @@ struct RootView: View {
     var body: some View {
         @Bindable var app = app
         TabView(selection: $app.tab) {
-            FoodMapView()
+            NavigationStack { FoodMapView() }
                 .tabItem { Label("地图", systemImage: "map") }
                 .tag(AppTab.map)
             TrackRootView()
@@ -58,10 +58,10 @@ struct RootView: View {
             HistoryView()
                 .tabItem { Label("历史", systemImage: "clock") }
                 .tag(AppTab.history)
-            SettingsView()
+            NavigationStack { SettingsView() }
                 .tabItem { Label("设置", systemImage: "gearshape") }
                 .tag(AppTab.settings)
-            QuotesView()
+            NavigationStack { QuotesView() }
                 .tabItem { Label("摘抄", systemImage: "text.quote") }
                 .tag(AppTab.quotes)
         }

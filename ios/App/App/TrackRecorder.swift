@@ -1,8 +1,10 @@
 import Foundation
 import CoreLocation
+import Observation
 
 // 纯原生轨迹记录器：CLLocationManager 后台持续定位，锁屏也记点
 @MainActor
+@Observable
 final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     static let shared = TrackRecorder()
 
@@ -14,9 +16,7 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     private var flushTimer: Timer?
     private(set) var isTracking = false
     private(set) var todayPoints: [(lat: Double, lng: Double)] = []
-    var onNewPoint: ((Double, Double) -> Void)?
-    var onStateChange: (() -> Void)?
-    var onError: ((String) -> Void)?
+    private(set) var lastError: String?
 
     override init() {
         super.init()
@@ -34,7 +34,7 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
         case .authorizedAlways, .authorizedWhenInUse: beginTracking()
         default:
             startRequested = false
-            onError?("请在设置中允许定位")
+            lastError = "请在设置中允许定位"
         }
     }
 
@@ -48,10 +48,10 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
             if isTracking {
                 Task {
                     do { try await stop() }
-                    catch { onError?("轨迹上传失败，待上传点已保留") }
+                    catch { lastError = "轨迹上传失败，待上传点已保留" }
                 }
             }
-            onError?("未获得定位权限")
+            lastError = "未获得定位权限"
         default: break
         }
     }
@@ -66,7 +66,7 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
         manager.startUpdatingLocation()
         manager.allowDeferredLocationUpdates(untilTraveled: 5, timeout: 15)
         isTracking = true
-        onStateChange?()
+        lastError = nil
         lastSent = nil
         flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.flush() }
@@ -77,7 +77,6 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
         startRequested = false
         manager.stopUpdatingLocation()
         isTracking = false
-        onStateChange?()
         flushTimer?.invalidate()
         flushTimer = nil
         try await queue.flush()
@@ -101,7 +100,6 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
             lastSent = (lat, lng, now)
             if Calendar.current.isDateInToday(loc.timestamp) {
                 todayPoints.append((lat, lng))
-                onNewPoint?(lat, lng)
             }
             queue.append(["lat": lat, "lng": lng, "ts": now, "acc": loc.horizontalAccuracy])
         }
@@ -109,8 +107,8 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     }
 
     private func flush() async {
-        do { try await queue.flush() }
-        catch { onError?("轨迹上传失败，待上传点已保留；联网后重试") }
+        do { try await queue.flush(); lastError = nil }
+        catch { lastError = "轨迹上传失败，待上传点已保留；联网后重试" }
     }
 
     // 离线查看用：某天尚未上传的点
@@ -122,5 +120,5 @@ final class TrackRecorder: NSObject, CLLocationManagerDelegate {
     // 今天页地图定位用：最后已知位置
     var lastKnownCoordinate: CLLocationCoordinate2D? { manager.location?.coordinate }
 
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { onError?(error.localizedDescription) }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { lastError = error.localizedDescription }
 }

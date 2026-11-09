@@ -70,14 +70,13 @@ enum SmokeTour {
         app.tab = .tracks
         try await waitUntil("今日轨迹") { app.tracks.loaded }
         try await shot("08-tracks")
-        let today = TrackView.fmtDay(Date())
-        app.daysPath = [TrackDestination(day: today)]
-        app.days.loadIfNeeded()
+        let today = OfflineStore.todayString()
+        app.daysPath = [.days]
         try await waitUntil("每日记录") { app.days.loaded }
         try await shot("09-track-days")
         let dayToOpen = (app.days.days.first?["day"] as? String) ?? today
         app.dayVM.loaded = false
-        app.daysPath.append(TrackDestination(day: dayToOpen))
+        app.daysPath.append(.day(dayToOpen))
         try await waitUntil("某天轨迹") { app.dayVM.loaded }
         try await shot("10-track-day")
         app.daysPath = []
@@ -97,7 +96,7 @@ enum SmokeTour {
         let deadline = Date().addingTimeInterval(40)
         while !condition() {
             guard Date() < deadline else { throw APIError(message: "\(name)超时") }
-            try await Task.sleep(nanoseconds: 100_000_000)
+            try await Task.sleep(for: .milliseconds(100))
         }
     }
 

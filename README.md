@@ -1,29 +1,30 @@
-# MyFood iOS
+# 觅食记 · MyFood iOS
 
-原生 Swift/UIKit 应用，使用 MapKit、CoreLocation、Speech；最低 iOS 15。后端为 myfood-worker，API 地址统一在 `ios/App/App/API.swift`。
+原生 SwiftUI 应用，最低 iOS 17。支持美食记录、拍照/相册建档、详情编辑、评论和语音输入、Vision OCR 划选、中国/欧洲美食地图、类别排名、后台轨迹、好词好句摘抄。API 地址统一在 `ios/App/App/API.swift`。
 
 ## 开发与构建
 
-用 Xcode 打开 `ios/App/App.xcodeproj`，选择 App scheme。真机运行需配置开发签名。
+用 Xcode 打开 `ios/App/App.xcodeproj`，选择 App scheme。真机运行需配置开发签名；现有工程使用 Swift 5 语言模式，保持与 CI 工具链一致。
 
 ```sh
 cd ios/App
 xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO
 ```
 
-推送 master 的 iOS、测试或 workflow 改动后，Actions 构建未签名 IPA、执行隔离回归及模拟器巡访。成功后上传 artifact 并发布 release；可用 Sideloadly 重签安装。
+推送 master 的 iOS、测试或 workflow 改动后，Actions 构建设备版和模拟器版、运行隔离回归与进程内自测、巡访 12 个页面并上传截图。全部通过才发布未签名 IPA；可用 Sideloadly 重签安装。其他分支可通过 `workflow_dispatch` 验证，产物仅上传 artifact。
 
 ## 测试
 
-纯 Swift 核心回归可在 Mac 或 Linux Swift 6 环境运行，无第三方依赖：
+核心回归需 macOS Swift 工具链，当前使用 CryptoKit、Network 和 Observation，不能直接照搬到 Linux：
 
 ```sh
-swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
+swiftc -DDEBUG ios/App/App/API.swift ios/App/App/AppState.swift ios/App/App/OfflineStore.swift ios/App/App/GCJConverter.swift ios/App/App/TestSupport.swift tests/CoreTests.swift -o /tmp/myfood-core-tests
 /tmp/myfood-core-tests
 python3 -m unittest discover -s tests -p 'test_*.py'
+bash tests/test_simulator_runner.sh
 ```
 
-Debug App 启动参数 `-autoTest` 与 `-autoSmoke` 使用 URLProtocol 内存数据，未知 API 端点直接失败。前者测试实际请求编解码和核心状态，后者等待目标页面就绪，由 runner 截取八张页面截图。Release 不启用测试参数。真实拖动、首次授权、后台定位仍需模拟器或设备验证。
+Debug App 的 `-autoTest` 验证 API 编解码、配置、评论草稿、离线重放和真实页面模型；`-autoSmoke` 打开历史、详情、OCR、快速建档、两张美食地图、排名、今日轨迹、每日记录、某天轨迹、设置和摘抄。runner 通过 marker/ack 握手截图。API 和远端图片共用可注入的 URLSession；fixture 未实现的请求直接失败，不访问正式服务。Release 不启用测试参数。首次授权、真实相机/语音、后台定位与锁屏恢复仍需设备验证。
 
 `tests/backend_api_test.py` 为独立后端集成测试，会创建并删除临时记录，必须显式提供测试服务地址：
 
@@ -35,9 +36,14 @@ python3 tests/backend_api_test.py http://localhost:8787
 
 ## 结构与边界
 
-- `ios/App/App/`：页面、API、现有 AppConfig、轨迹与语音管理器。
+- `MyFoodApp.swift`：SwiftUI 生命周期、tab 和导航路径；页面状态由 `@Observable` 模型维护。
 - `AppState.swift`：共享配置校验、评论草稿、轨迹上传队列和排名变更计算。
 - `tests/`：隔离回归、模拟器 runner、显式目标后端集成测试。
 - 图片尺寸、JPEG 质量、分页和默认偏好来自已验证的 `/api/config`；配置失败允许重试。
-- 拍摄时间使用上传时刻，元数据为 `image_metadata.taken_at`。定位使用 WGS84，国内地图可能存在坐标偏移。
-- 轨迹上传失败保留内存批次，联网后重试；进程退出后的恢复尚未落盘。服务端排名逐条更新，部分失败需在弹窗重试。
+- `OfflineStore.swift`：配置/记录/类别/轨迹/摘抄/图片缓存，以及离线写队列和重放。
+- 网络不可达才回退缓存或入队；业务错误原样提示。队列重放失败保留操作与原图，手动同步报告错误。队首错误修复后继续按序重试。
+- 离线新档使用负数 ID 与稳定 `client_key`；同步创建后替换为服务端 ID，并改写后续编辑目标。删除本地新档直接撤销创建。
+- 缓存写盘使用串行后台队列，待同步操作同步落盘；轨迹待传点也持久化。队列与缓存格式保持兼容。
+- 轨迹保存 WGS-84，国内显示转换 GCJ-02，境外直通。拍摄时间使用上传时刻，元数据为 `image_metadata.taken_at`。
+
+提交演进、保留机制的原因和本次清理见 [历史审查](docs/history-review.md)。

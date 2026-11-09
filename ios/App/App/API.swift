@@ -13,7 +13,7 @@ enum API {
         guard let p = path, !p.isEmpty else { return nil }
         if p.hasPrefix("offline:") { return OfflineStore.localImageURL(p) } // 离线待传原图
         if p.hasPrefix("http") { return URL(string: p) }
-        return URL(string: BASE_URL + p)
+        return URL(string: p, relativeTo: URL(string: BASE_URL + "/")!)?.absoluteURL
     }
 
     static func request(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> [String: Any] {
@@ -97,9 +97,12 @@ enum API {
         return result
     }
     static func addIngredient(_ name: String) async throws -> [String: Any] { try await request("/api/ingredients", method: "POST", body: ["name": name]) }
-    static func submitFood(_ record: [String: Any]) async throws -> [String: Any] { try await request("/api/foods", method: "POST", body: record) }
+    static func submitFood(_ record: [String: Any]) async throws -> [String: Any] {
+        let result = try await request("/api/foods", method: "POST", body: record)
+        guard let id = result["id"] as? Int, id > 0 else { throw APIError(message: "服务器未返回记录 ID") }
+        return result
+    }
     static func updateFoodDetails(_ id: Int, fields: [String: Any]) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "PATCH", body: ["fields": fields]) }
-    static func addComment(_ id: Int, comment: [String]) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "PATCH", body: ["comment": comment]) }
     static func deleteFood(_ id: Int) async throws -> [String: Any] { try await request("/api/foods/\(id)", method: "DELETE") }
     static func postTrackPoints(_ points: [[String: Any]]) async throws { _ = try await request("/api/tracks", method: "POST", body: ["points": points]) }
     static func getTrackPoints(day: String) async throws -> [[String: Any]] {
@@ -120,7 +123,9 @@ enum API {
         return r
     }
     static func createQuote(text: String, note: String, clientKey: String) async throws -> [String: Any] {
-        try await request("/api/quotes", method: "POST", body: ["text": text, "note": note, "client_key": clientKey])
+        let result = try await request("/api/quotes", method: "POST", body: ["text": text, "note": note, "client_key": clientKey])
+        guard let id = result["id"] as? Int, id > 0 else { throw APIError(message: "服务器未返回摘抄 ID") }
+        return result
     }
     static func deleteQuote(_ id: Int) async throws -> [String: Any] {
         try await request("/api/quotes/\(id)", method: "DELETE")

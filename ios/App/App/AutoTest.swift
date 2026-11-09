@@ -93,7 +93,84 @@ enum AutoTest {
         check(app.detail.loaded && app.detail.name == "测试记录 80", "详情按 id 加载记录")
         check(DetailViewModel.prevRecordLabel(["2026-11-01", "2026-11-03"]) == "上次记录：2026-11-01", "上次记录标签")
         mark("详情断言后")
+        try await modelRegression(check: check)
         TestFixture.install()
+    }
+
+    @MainActor
+    private static func modelRegression(check: (Bool, String) -> Void) async throws {
+        TestFixture.install()
+        OfflineStore.wipeAll()
+        _ = try await API.updateFoodDetails(80, fields: ["comment": ["A", "B", "C"]])
+        let detail = DetailViewModel()
+        detail.open(recordId: 80)
+        await detail.loadAll()
+        check(detail.comments == ["A", "B", "C"], "详情加载评论与草稿一致")
+        detail.editComment(1)
+        detail.deleteComment(0)
+        check(detail.editingCommentIndex == 0, "删除前一条评论后编辑索引同步")
+        detail.commentInput = "B编辑"
+        detail.saveDetail()
+        try await waitUntil { !detail.saving }
+        var saved = try await API.getFoodById(80)
+        check(saved["comment"] as? [String] == ["B编辑", "C"], "编辑评论保存覆盖原条目")
+        detail.commentInput = "追加"
+        detail.saveDetail()
+        try await waitUntil { !detail.saving }
+        saved = try await API.getFoodById(80)
+        check(saved["comment"] as? [String] == ["B编辑", "C", "追加"], "连续保存不恢复旧草稿")
+        detail.editComment(0)
+        detail.deleteComment(0)
+        check(detail.editingCommentIndex == nil && detail.commentInput.isEmpty, "删除正在编辑的评论清空输入态")
+
+        let image = await RemoteImageModel.shared.load(API.imageUrl("myfood/regression.png"))
+        check(image != nil, "图片通过 fixture 会话加载和解码")
+        let ocr = OCRViewModel(image: UIImage())
+        ocr.chars = ["美", "食", "日", "记"]
+        ocr.touchStarted(0)
+        ocr.touchMoved(3)
+        ocr.touchEnded()
+        check(ocr.builtText == "美食日记", "OCR 跨格拖动连续选字")
+        ocr.touchStarted(1)
+        ocr.touchMoved(2)
+        ocr.touchEnded()
+        check(ocr.builtText == "美记", "OCR 从已选字起拖连续取消")
+
+        var local = saved
+        local["id"] = -1
+        local["client_key"] = "local-detail"
+        OfflineStore.upsertRecord(local)
+        OfflineStore.enqueue(.create(record: local, clientKey: "local-detail", localId: -1, localImage: nil))
+        detail.open(recordId: -1)
+        let before = TestFixture.requests.count
+        await detail.loadAll()
+        check(detail.loaded && detail.recordId == -1 && TestFixture.requests.count == before, "本地新档不请求负数服务端 ID")
+        detail.deleteCurrent()
+        check(OfflineStore.record(id: -1) == nil && OfflineStore.pendingCount() == 0, "本地新档直接撤销创建并删除")
+
+        let localQuote: [String: Any] = ["id": -1, "text": "离线摘抄", "client_key": "local-quote"]
+        OfflineStore.upsertQuote(localQuote)
+        OfflineStore.enqueue(.quoteCreate(record: localQuote, clientKey: "local-quote", localId: -1))
+        let quotes = QuotesViewModel()
+        quotes.quotes = [localQuote]
+        quotes.delete(localQuote)
+        check(OfflineStore.quote(id: -1) == nil && OfflineStore.pendingCount() == 0, "本地摘抄直接撤销创建并删除")
+
+        FixtureProtocol.handler = { _ in (500, ["error": "服务端拒绝"]) }
+        let settings = SettingsViewModel()
+        await settings.runManualSync()
+        check(settings.syncStatus == "同步失败：服务端拒绝" && !settings.syncing, "手动同步失败保留错误状态")
+        let history = HistoryViewModel()
+        await history.loadRecords(reset: true)
+        check(history.records.isEmpty && history.toast == "服务端拒绝", "服务端失败不伪装为历史离线成功")
+        let map = FoodMapViewModel()
+        map.allFoods = [["id": 80, "category_rank": ["c": 2]]]
+        do {
+            try await map.applyRankOrder(list: [["id": 80]], cat: "c")
+            check(false, "排名业务失败必须报告")
+        } catch {
+            check(OfflineStore.pendingCount() == 0, "排名业务失败不进入离线队列")
+        }
     }
 
     @MainActor
@@ -101,7 +178,7 @@ enum AutoTest {
         let deadline = Date().addingTimeInterval(10)
         while !condition() {
             guard Date() < deadline else { throw APIError(message: "UI回归等待超时") }
-            try await Task.sleep(nanoseconds: 10_000_000)
+            try await Task.sleep(for: .milliseconds(10))
         }
     }
     #endif

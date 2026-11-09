@@ -77,6 +77,11 @@ final class FoodMapViewModel {
             catItems = catResult["items"] as? [[String: Any]] ?? []
             OfflineStore.saveCategories(catItems)
         } catch {
+            guard isNetworkError(error) else {
+                statusText = error.localizedDescription
+                needsRefresh = true
+                return
+            }
             // 断网兜底：本地缓存继续可用
             let cachedFoods = OfflineStore.cachedRecords()
             let cachedCats = OfflineStore.cachedCategories()
@@ -117,8 +122,6 @@ final class FoodMapViewModel {
         loadFeatures()
     }
 
-    func markNeedsRefresh() { needsRefresh = true }
-
     // 点选省份 → 特色美食列表（visited 置顶，移植 mapTapped）
     func selectProvince(_ name: String) {
         let province = region == "europe" ? name : FoodMapGeometry.toFullName(name)
@@ -149,6 +152,7 @@ final class FoodMapViewModel {
             do {
                 _ = try await API.updateFoodDetails(change.id, fields: ["category_rank": change.rank])
             } catch {
+                guard isNetworkError(error) else { throw error }
                 OfflineStore.enqueue(.patch(serverId: change.id, fields: ["category_rank": change.rank]))
             }
             if let index = allFoods.firstIndex(where: { ($0["id"] as? Int) == change.id }) {
@@ -268,16 +272,11 @@ struct FoodMapView: View {
             vm.onAppear()
             if vm.features.isEmpty { vm.loadFeatures() }
         }
-        .onChange(of: vm.region) { _, _ in vm.loadFeatures() }
         .sheet(isPresented: Bindable(vm).rankPresented) {
             if let cat = vm.rankCategory {
                 RankSheetView(category: cat)
             }
         }
-    }
-
-    private var rankPresented: Binding<Bool> {
-        Binding(get: { app.foodMap.rankCategory != nil }, set: { if !$0 { app.foodMap.rankCategory = nil } })
     }
 
     private func regionButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -319,10 +318,7 @@ struct FoodMapView: View {
                 .padding(.bottom, 16)
             }
         }
-        .sheet(item: Binding(
-            get: { app.foodMap.selectedProvince.map { ProvinceItem(name: $0) } },
-            set: { app.foodMap.selectedProvince = $0?.name }
-        )) { province in
+        .sheet(item: Bindable(app.foodMap).selectedProvinceItem) { province in
             DishPanelView(province: province.name)
         }
     }
@@ -383,7 +379,6 @@ struct ProvinceItem: Identifiable {
 struct DishPanelView: View {
     let province: String
     @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -423,7 +418,6 @@ struct RankSheetView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var foods: [[String: Any]] = []
-    @State private var dragFrom: Int?
     @State private var statusText = "长按条目拖到另一条上，交换排名"
     @State private var saving = false
     @State private var toast: String?
@@ -449,17 +443,15 @@ struct RankSheetView: View {
                             Spacer()
                         }
                         .padding(.vertical, 4)
-                        .background(dragFrom == idx ? Theme.primary.opacity(0.12) : Color.clear)
-                        .opacity(dragFrom == idx ? 0.5 : 1)
                     }
                     .onMove { from, to in
                         foods.move(fromOffsets: from, toOffset: to)
                         Task { await apply() }
                     }
-                    .onDelete { _ in }
                 }
                 .listStyle(.plain)
                 .environment(\.editMode, .constant(.active))
+                .disabled(saving)
             }
             .padding(.horizontal, 12)
             .navigationTitle("\(category) · 排行榜")

@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import Network
+import Observation
 
 // ============ 离线能力中枢 ============
 // 磁盘缓存（配置/记录/类别/轨迹/图片）+ 离线写操作队列 + 联网自动同步。
@@ -31,12 +32,14 @@ struct PendingMutation {
         var m = PendingMutation(kind: "patch")
         m.serverId = serverId
         m.fields = fields
+        if let path = fields["image_path"] as? String, path.hasPrefix("offline:") { m.localImage = path }
         return m
     }
     static func patchLocal(clientKey: String, fields: [String: Any]) -> PendingMutation {
         var m = PendingMutation(kind: "patch")
         m.clientKey = clientKey
         m.fields = fields
+        if let path = fields["image_path"] as? String, path.hasPrefix("offline:") { m.localImage = path }
         return m
     }
     static func delete(serverId: Int) -> PendingMutation {
@@ -84,6 +87,9 @@ struct PendingMutation {
         m.fields = dict["fields"] as? [String: Any]
         m.record = dict["record"] as? [String: Any]
         m.localImage = dict["localImage"] as? String
+        if m.localImage == nil, let path = m.fields?["image_path"] as? String, path.hasPrefix("offline:") {
+            m.localImage = path
+        }
         return m
     }
 }
@@ -343,7 +349,7 @@ enum OfflineStore {
     }
 
     // create 成功后：把后续指向该本地记录的 patch 改写为服务端 id
-    static func resolvePending(clientKey: String, serverId: Int?) {
+    static func resolvePending(clientKey: String, serverId: Int) {
         lock.lock(); defer { lock.unlock() }
         var list = pendingList()
         for i in list.indices where list[i].clientKey == clientKey && list[i].kind == "patch" {
@@ -470,6 +476,8 @@ func isNetworkError(_ error: Error) -> Bool {
 
 // ============ 联网状态监听 ============
 
+@MainActor
+@Observable
 final class NetworkMonitor {
     static let shared = NetworkMonitor()
     private let monitor = NWPathMonitor()
@@ -479,7 +487,7 @@ final class NetworkMonitor {
     func start() {
         monitor.pathUpdateHandler = { [weak self] path in
             let online = path.status == .satisfied
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 guard let self, self.isOnline != online else { return }
                 self.isOnline = online
                 if online { self.onReconnect?() }
@@ -491,26 +499,22 @@ final class NetworkMonitor {
 
 // ============ 同步引擎：恢复联网后按序重放离线队列 ============
 
+@MainActor
 enum SyncEngine {
-    private static var syncing = false
+    private static var syncing: Task<Void, Error>?
 
-    @MainActor
-    static func drain() async {
-        guard !syncing else { return }
-        syncing = true
-        defer { syncing = false }
-        while true {
-            guard let first = OfflineStore.pendingMutations().first else { return }
-            do {
+    static func drain() async throws {
+        if let syncing { return try await syncing.value }
+        let task = Task {
+            while let first = OfflineStore.pendingMutations().first {
+                // 失败保留队列和原图，手动同步显示错误；下次重试仍用同一幂等键。
                 try await apply(first)
-                OfflineStore.removeMutation(uuid: first.uuid)
-            } catch {
-                if isNetworkError(error) { return } // 仍离线：保留队列下次再试
-                // 永久错误（4xx 等）：丢弃该条避免堵死队列；本地乐观数据保持原样
-                if let localImage = first.localImage { OfflineStore.removeLocalImage(localImage) }
                 OfflineStore.removeMutation(uuid: first.uuid)
             }
         }
+        syncing = task
+        defer { syncing = nil }
+        try await task.value
     }
 
     @MainActor
@@ -520,9 +524,10 @@ enum SyncEngine {
             var rec = m.record ?? [:]
             var imagePath = rec["image_path"] as? String ?? ""
             var meta = rec["image_metadata"] as? [String: Any] ?? [:]
-            if let localPath = m.localImage, let data = OfflineStore.localImageData(localPath) {
+            if let localPath = m.localImage {
+                guard let data = OfflineStore.localImageData(localPath) else { throw APIError(message: "离线图片不存在，请重新选择图片") }
                 let upload = try await API.uploadImage(jpegData: data)
-                imagePath = upload["path"] as? String ?? imagePath
+                imagePath = upload["path"] as! String
                 // 服务端 EXIF 元数据在前，本地补充（拍摄时间/定位）覆盖
                 if let exif = upload["metadata"] as? [String: Any] {
                     for (k, v) in exif where meta[k] == nil { meta[k] = v }
@@ -531,8 +536,8 @@ enum SyncEngine {
             rec["image_path"] = imagePath
             rec["image_metadata"] = meta
             let res = try await API.submitFood(rec)
-            let serverId = res["id"] as? Int
-            if let localId = m.localId, let sid = serverId {
+            let sid = res["id"] as! Int
+            if let localId = m.localId {
                 var updated = rec
                 updated["id"] = sid
                 OfflineStore.removeRecord(id: localId)
@@ -542,14 +547,15 @@ enum SyncEngine {
             if let localPath = m.localImage { OfflineStore.removeLocalImage(localPath) }
         case "patch":
             var fields = m.fields ?? [:]
-            if let localPath = m.localImage, let data = OfflineStore.localImageData(localPath) {
+            if let localPath = m.localImage {
+                guard let data = OfflineStore.localImageData(localPath) else { throw APIError(message: "离线图片不存在，请重新选择图片") }
                 let upload = try await API.uploadImage(jpegData: data)
                 var meta = fields["image_metadata"] as? [String: Any] ?? [:]
                 if let exif = upload["metadata"] as? [String: Any] {
                     for (k, v) in exif where meta[k] == nil { meta[k] = v }
                 }
                 fields["image_metadata"] = meta
-                fields["image_path"] = upload["path"] as? String ?? ""
+                fields["image_path"] = upload["path"] as! String
             }
             guard let id = m.serverId else { throw APIError(message: "离线队列目标缺失") }
             _ = try await API.updateFoodDetails(id, fields: fields)
@@ -567,10 +573,10 @@ enum SyncEngine {
         case "ingredient":
             _ = try await API.addIngredient(m.name ?? "")
         case "quoteCreate":
-            var rec = m.record ?? [:]
+            let rec = m.record ?? [:]
             let res = try await API.createQuote(text: rec["text"] as? String ?? "", note: rec["note"] as? String ?? "", clientKey: m.clientKey ?? "")
-            let serverId = res["id"] as? Int
-            if let localId = m.localId, let sid = serverId {
+            let sid = res["id"] as! Int
+            if let localId = m.localId {
                 var updated = rec
                 updated["id"] = sid
                 updated["day"] = OfflineStore.todayString() // 创建即今天；下次整表拉取会用服务端时间
