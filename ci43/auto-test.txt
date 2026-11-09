@@ -1,0 +1,39 @@
+PASS 配置使用服务端刻度和默认偏好
+PASS 缺少 flavor_scale 被拒绝
+PASS 缺少 preferences 被拒绝
+PASS 缺少 pagination 被拒绝
+PASS 缺少 image 被拒绝
+PASS 缺少内部刻度被拒绝
+PASS 非法图片质量被拒绝
+PASS 编辑B、删除A后保存不越界
+PASS 未保存草稿不修改原评论
+PASS 删除正在编辑的评论清除编辑态
+PASS 空列表追加评论
+PASS 删除后面的评论保留编辑，空文本删除当前评论
+PASS 断网上传报告失败
+PASS 断网保留全部待上传点
+PASS 并发flush只发送一次、恢复后保序排空
+PASS 排名交换再换回，两次都有保存变更
+PASS 已保存排名不重复提交
+PASS 并发配置请求合并
+PASS 80条记录、服务端上限50完整分页
+PASS 搜索特殊字符不注入查询参数，保留加号
+PASS 坏JSON或缺列表字段被拒绝
+PASS 坏JSON或缺列表字段被拒绝
+PASS 坏JSON或缺列表字段被拒绝
+PASS HTTP删除失败保留具体错误
+PASS 不完整分页报错
+PASS 坏配置报告失败
+PASS 配置失败后可重试
+PASS JSON中文与worth读写往返
+PASS 隔离测试记录清理完成
+PASS 慢旧搜索不阻挡、不覆盖最新搜索
+PASS 无图绑定使旧下载token失效并显示占位图
+PASS worth yes
+PASS worth Bool
+PASS worth null
+PASS 实际scrollView保留轮盘触摸
+PASS 实际scrollView保留偏好子视图触摸
+PASS 地图投影起点
+PASS 地图投影cos校正
+RESULT: ALL PASS

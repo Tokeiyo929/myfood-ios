@@ -1,0 +1,22 @@
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/01-history.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/02-detail.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/04-map-china.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/05-map-europe.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/06-rank.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/07-tracks.png
+Detected file type from extension: PNG
+Note: No display specified. Defaulting to display: F6EE696D-A6D3-4C79-B910-6BF6A27B5098 (screenID: 1, name: LCD)
+Wrote screenshot to: /Users/runner/work/myfood-ios/myfood-ios/smoke/08-settings.png
+RESULT: ALL PASS
