@@ -161,6 +161,7 @@ final class FoodMapViewModel {
         for change in RankOrder.changes(list, current: allFoods, category: cat) {
             do {
                 _ = try await API.updateFoodDetails(change.id, fields: ["category_rank": change.rank])
+                SyncDiff.snapshotPatchFood(id: change.id, fields: ["category_rank": change.rank]) // 防误报"远端更新"
             } catch {
                 guard isNetworkError(error) else { throw error }
                 OfflineStore.enqueue(.patch(serverId: change.id, fields: ["category_rank": change.rank]))

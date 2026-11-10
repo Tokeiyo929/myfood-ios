@@ -1,7 +1,7 @@
 import SwiftUI
 
 // @main SwiftUI 生命周期（替代 AppDelegate/SceneDelegate/MainTabBarController）
-// tab 布局：0 地图 | 1 轨迹 | 2 历史(中心) | 3 设置 | 4 摘抄
+// tab 布局：0 地图 | 1 轨迹 | 2 历史(中心) | 3 摘抄 | 4 设置
 @main
 @MainActor
 struct MyFoodApp: App {
@@ -31,6 +31,13 @@ struct MyFoodApp: App {
         let auto: () async throws -> Void = {
             await SyncDiff.fetchAndStash()
             try? await SyncEngine.drain(conflictIds: SyncDiff.compute().conflictIds)
+            // 收尾对账（对齐手动同步）：推送后重拉远端、以真值重建快照并清暂存。
+            // 否则 stash 停在推送前，自己刚推的内容会被误报为"远端更新/远端删除"
+            if let fresh = await SyncDiff.fetchAndStash(force: true) {
+                SyncDiff.rebuildSnapshot(foods: fresh.foods, quotes: fresh.quotes)
+                SyncDiff.clearStash()
+                NotificationCenter.default.post(name: .myfoodDataSynced, object: nil)
+            }
         }
         NetworkMonitor.shared.onReconnect = { Task { try? await auto() } }
         Task { try? await auto() }
@@ -63,12 +70,12 @@ struct RootView: View {
             HistoryView()
                 .tabItem { Label("历史", systemImage: "clock") }
                 .tag(AppTab.history)
-            NavigationStack { SettingsView() }
-                .tabItem { Label("设置", systemImage: "gearshape") }
-                .tag(AppTab.settings)
             NavigationStack { QuotesView() }
                 .tabItem { Label("摘抄", systemImage: "text.quote") }
                 .tag(AppTab.quotes)
+            NavigationStack { SettingsView() }
+                .tabItem { Label("设置", systemImage: "gearshape") }
+                .tag(AppTab.settings)
         }
         .tint(Theme.primary)
     }

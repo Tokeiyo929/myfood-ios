@@ -308,6 +308,7 @@ final class DetailViewModel {
             }
             do {
                 _ = try await API.updateFoodDetails(id, fields: fields)
+                SyncDiff.snapshotPatchFood(id: id, fields: fields) // 已推内容并入快照，防误报"远端更新"
                 SyncLog.append(kind: "patch", target: name, status: "synced")
                 applyLocalSave(fields, base: f, newComments: newComments)
                 toast = "保存成功"
@@ -362,6 +363,7 @@ final class DetailViewModel {
         Task {
             do {
                 _ = try await API.deleteFood(id)
+                SyncDiff.snapshotRemoveFood(id: id) // 已删内容移出快照，防误报"远端已删除"
                 SyncLog.append(kind: "delete", target: label, status: "synced")
                 OfflineStore.removeRecord(id: id)
                 toast = "已删除"
@@ -419,7 +421,9 @@ final class DetailViewModel {
                 if let taken = meta["taken_at"] { upMeta["taken_at"] = taken }
                 if let lat = meta["latitude"] { upMeta["latitude"] = lat }
                 if let lng = meta["longitude"] { upMeta["longitude"] = lng }
-                _ = try await API.updateFoodDetails(id, fields: ["image_path": upload["path"] as! String, "image_metadata": upMeta])
+                let upFields: [String: Any] = ["image_path": upload["path"] as! String, "image_metadata": upMeta]
+                _ = try await API.updateFoodDetails(id, fields: upFields)
+                SyncDiff.snapshotPatchFood(id: id, fields: upFields) // 已推内容并入快照，防误报"远端更新"
                 applyImagePath(upload["path"] as! String, meta: upMeta)
                 SyncLog.append(kind: "patch", target: targetName(id: id), detail: "换图", status: "synced")
                 toast = "已更换"

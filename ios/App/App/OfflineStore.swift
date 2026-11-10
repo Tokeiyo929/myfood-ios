@@ -490,15 +490,8 @@ enum OfflineStore {
 
 // 网络不可达（可离线兜底/入队）还是业务错误（不该被缓存/队列掩盖）
 func isNetworkError(_ error: Error) -> Bool {
-    if let urlError = error as? URLError {
-        switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost,
-             .dnsLookupFailed, .timedOut, .dataNotAllowed, .internationalRoamingOff,
-             .secureConnectionFailed, .serverCertificateUntrusted:
-            return true
-        default: return false
-        }
-    }
+    if let api = error as? APIError, let code = api.statusCode, code >= 500 { return true } // 服务端故障可重试，入队离线补传
+    if error is URLError { return true } // 网络层错误一律可兜底（含系统取消/挂断的后台上传）
     let ns = error as NSError
     return ns.domain == NSURLErrorDomain
 }

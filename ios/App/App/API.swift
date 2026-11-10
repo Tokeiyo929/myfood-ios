@@ -5,7 +5,12 @@ import FoundationNetworking
 
 let BASE_URL = "https://myfood.tuqingyu.xyz"
 
-struct APIError: LocalizedError { let message: String; var errorDescription: String? { message } }
+struct APIError: LocalizedError {
+    let message: String
+    let statusCode: Int? // 非 nil 时供 isNetworkError 判定：5xx 属服务端故障，可离线兜底重试
+    var errorDescription: String? { message }
+    init(message: String, statusCode: Int? = nil) { self.message = message; self.statusCode = statusCode }
+}
 
 enum API {
     static var session = URLSession.shared
@@ -29,7 +34,7 @@ enum API {
         guard let http = resp as? HTTPURLResponse else { throw APIError(message: "网络错误") }
         let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         guard (200..<300).contains(http.statusCode) else {
-            throw APIError(message: (obj?["error"] as? String) ?? "HTTP \(http.statusCode)")
+            throw APIError(message: (obj?["error"] as? String) ?? "HTTP \(http.statusCode)", statusCode: http.statusCode)
         }
         guard let obj else { throw APIError(message: "服务器返回的数据格式无效") }
         return obj
@@ -51,7 +56,9 @@ enum API {
         req.httpBody = body
         let (data, resp) = try await session.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw APIError(message: "上传失败")
+            let code = (resp as? HTTPURLResponse)?.statusCode
+            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            throw APIError(message: (obj?["error"] as? String) ?? "上传失败（HTTP \(code ?? 0)）", statusCode: code)
         }
         guard let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let path = obj["path"] as? String, !path.isEmpty else {

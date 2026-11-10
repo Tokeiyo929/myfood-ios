@@ -54,15 +54,17 @@ enum SyncDiff {
 
     // MARK: 静默拉取远端存暂存（git fetch）；失败静默，保持现有 diff 状态
 
-    static func fetchAndStash() async {
-        if let last = lastStashAt, Date().timeIntervalSince(last) < stashMinInterval { return }
-        guard let config = try? await AppConfig.load() else { return }
+    @discardableResult
+    static func fetchAndStash(force: Bool = false) async -> (foods: [[String: Any]], quotes: [[String: Any]])? {
+        if !force, let last = lastStashAt, Date().timeIntervalSince(last) < stashMinInterval { return nil }
+        guard let config = try? await AppConfig.load() else { return nil }
         guard let foods = try? await API.getAllFoods(limit: config.maxPageSize),
-              let quotes = try? await API.getQuotes() else { return }
+              let quotes = try? await API.getQuotes() else { return nil }
         let quoteItems = quotes["items"] as? [[String: Any]] ?? []
         initializeSnapshotIfMissing(foods: foods, quotes: quoteItems)
         stashRemote(foods: foods, quotes: quoteItems)
         lastStashAt = Date()
+        return (foods, quoteItems)
     }
 
     // MARK: 快照与暂存存取
@@ -75,12 +77,29 @@ enum SyncDiff {
         rebuildSnapshot(foods: foods, quotes: quotes)
     }
 
-    // 同步完成后以服务端真值重建快照
+    // 同步完成后以服务端真值重建快照；仍有未推送改动（待重试/冲突待解决）的记录保留旧基线，
+    // 否则其冲突基线被覆盖，下次 compute 不再报 ⚠，drain 会静默推平本地改动
     static func rebuildSnapshot(foods: [[String: Any]], quotes: [[String: Any]]) {
+        let dirtyFoods = localDirtyFoodIds()
+        let dirtyQuotes = localDirtyQuoteIds()
+        let prevFoods = snapshotFoods()
+        let prevQuotes = snapshotQuotes()
         var f: [String: Any] = [:]
-        for r in foods { if let id = r["id"] as? Int { f[String(id)] = normalizeFood(r) } }
+        for r in foods {
+            guard let id = r["id"] as? Int else { continue }
+            if dirtyFoods.contains(id), let prev = prevFoods[id] { f[String(id)] = prev } else { f[String(id)] = normalizeFood(r) }
+        }
+        for id in dirtyFoods where f[String(id)] == nil { // 远端已删但本地有未推送改动：保留旧基线，维持 ⚠ 可见
+            if let prev = prevFoods[String(id)] { f[String(id)] = prev }
+        }
         var q: [String: Any] = [:]
-        for r in quotes { if let id = r["id"] as? Int { q[String(id)] = normalizeQuote(r) } }
+        for r in quotes {
+            guard let id = r["id"] as? Int else { continue }
+            if dirtyQuotes.contains(id), let prev = prevQuotes[id] { q[String(id)] = prev } else { q[String(id)] = normalizeQuote(r) }
+        }
+        for id in dirtyQuotes where q[String(id)] == nil {
+            if let prev = prevQuotes[String(id)] { q[String(id)] = prev }
+        }
         saveSnapshot(foods: f, quotes: q)
     }
 
@@ -98,6 +117,10 @@ enum SyncDiff {
     static func normalizeImage(_ v: Any) -> Any {
         guard var s = v as? String, !s.isEmpty else { return v }
         if let q = s.firstIndex(of: "?") { s = String(s[..<q]) } // 剥掉签名参数
+        if let scheme = s.range(of: "://") { // 剥 scheme://host 只留 path：签名完整 URL 与上传返回的相对 key 归一可比
+            let rest = s[scheme.upperBound...]
+            if let slash = rest.firstIndex(of: "/") { s = String(rest[slash...]) }
+        }
         while s.hasPrefix("/") { s.removeFirst() }
         return s
     }
@@ -107,6 +130,12 @@ enum SyncDiff {
         for k in foodDiffFields {
             guard let v = r[k] else { continue }
             out[k] = k == "image_path" ? normalizeImage(v) : v
+        }
+        // worth_it 对齐服务端存法（worker worthItValue）：Bool/NSNull/缺失 → "yes"/"no"/""，否则快照与远端表单永不等
+        if let b = out["worth_it"] as? Bool {
+            out["worth_it"] = b ? "yes" : "no"
+        } else if out["worth_it"] == nil || out["worth_it"] is NSNull {
+            out["worth_it"] = ""
         }
         return out
     }
@@ -163,6 +192,26 @@ enum SyncDiff {
         Set(OfflineStore.pendingMutations().compactMap { $0.kind == "delete" ? $0.serverId : nil })
     }
 
+    // 摘抄的脏集：quoteCreate（本地负 id + client_key 映射）/ quoteDelete
+    static func localDirtyQuoteIds() -> Set<Int> {
+        var dirty: Set<Int> = []
+        var byKey: [String: Int] = [:]
+        for q in OfflineStore.cachedQuotes() {
+            if let k = q["client_key"] as? String, !k.isEmpty { byKey[k] = q["id"] as? Int ?? 0 }
+        }
+        for m in OfflineStore.pendingMutations() {
+            switch m.kind {
+            case "quoteCreate":
+                if let lid = m.localId { dirty.insert(lid) }
+                if let k = m.clientKey, let rid = byKey[k] { dirty.insert(rid) }
+            case "quoteDelete":
+                if let sid = m.serverId { dirty.insert(sid) }
+            default: break
+            }
+        }
+        return dirty
+    }
+
     // MARK: 三方对比
 
     static func compute() -> SyncDiffState {
@@ -183,8 +232,18 @@ enum SyncDiff {
 
         for r in stashFoods {
             guard let id = r["id"] as? Int else { continue }
+            let norm = normalizeFood(r)
             if let base = baseFoods[id] {
-                if !recordEqual(normalizeFood(r), base) { st.remoteChangedIds.append(id) }
+                if !recordEqual(norm, base) {
+                    // 三方判定：stash 与本地工作区一致 → 是自己已同步的内容，自愈陈旧快照，不误报 ↓
+                    if let local = recordsById[id], recordEqual(norm, normalizeFood(local)) {
+                        snapshotUpsertFood(r)
+                    } else {
+                        st.remoteChangedIds.append(id)
+                    }
+                }
+            } else if let local = recordsById[id], recordEqual(norm, normalizeFood(local)) {
+                snapshotUpsertFood(r) // 快照缺该 id 但本地已有同内容 → 自己推送的，补快照
             } else {
                 st.remoteChangedIds.append(id) // 远端新增
             }
@@ -201,10 +260,9 @@ enum SyncDiff {
             var fields: [SyncFieldDiff] = []
             if let remote, let localRec = local { // 本地已删/远端已删时无对等值可比，明细留空，靠 localKind/remoteKind 说明
                 let normRemote = normalizeFood(remote)
+                let normLocal = normalizeFood(localRec) // 本地侧同样归一，Bool worth_it/相对图片路径才可与远端可比
                 for key in foodDiffFields {
-                    let lv = localRec[key].map { key == "image_path" ? normalizeImage($0) : $0 }
-                    let rv = normRemote[key]
-                    switch (lv, rv) {
+                    switch (normLocal[key], normRemote[key]) {
                     case (nil, nil): continue
                     case (nil, let r?): fields.append(SyncFieldDiff(key: key, local: "（无）", remote: display(r)))
                     case (let l?, nil): fields.append(SyncFieldDiff(key: key, local: display(l), remote: "（无）"))
@@ -225,12 +283,24 @@ enum SyncDiff {
 
         let remoteQuotesById = Dictionary(stashQuotes.compactMap { r in (r["id"] as? Int).map { ($0, r) } },
                                           uniquingKeysWith: { _, n in n })
+        let cachedQuotesById = Dictionary(OfflineStore.cachedQuotes().compactMap { q in (q["id"] as? Int).map { ($0, q) } },
+                                          uniquingKeysWith: { _, n in n })
         for r in stashQuotes {
             guard let id = r["id"] as? Int else { continue }
+            let norm = normalizeQuote(r)
             if let base = baseQuotes[id] {
-                if !recordEqual(normalizeQuote(r), base) { st.remoteQuoteIds.append(id) }
+                if !recordEqual(norm, base) {
+                    // 同 foods 的三方判定：自己已同步的内容不误报
+                    if let local = cachedQuotesById[id], recordEqual(norm, normalizeQuote(local)) {
+                        snapshotUpsertQuote(r)
+                    } else {
+                        st.remoteQuoteIds.append(id)
+                    }
+                }
+            } else if let local = cachedQuotesById[id], recordEqual(norm, normalizeQuote(local)) {
+                snapshotUpsertQuote(r)
             } else {
-                st.remoteQuoteIds.append(id)
+                st.remoteQuoteIds.append(id) // 远端新增
             }
         }
         for id in baseQuotes.keys where remoteQuotesById[id] == nil { st.remoteQuoteDeletedIds.append(id) }

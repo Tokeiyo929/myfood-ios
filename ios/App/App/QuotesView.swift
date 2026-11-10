@@ -50,6 +50,7 @@ final class QuotesViewModel {
                 let res = try await API.createQuote(text: text, note: "", clientKey: clientKey)
                 let id = res["id"] as! Int
                 OfflineStore.upsertQuote(["id": id, "text": text, "note": "", "day": OfflineStore.todayString()])
+                SyncDiff.snapshotUpsertQuote(["id": id, "text": text, "note": ""]) // 防误报"远端新增摘抄"
                 SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "synced")
                 input = ""
                 reloadFromCache()
@@ -89,6 +90,7 @@ final class QuotesViewModel {
         Task {
             do {
                 _ = try await API.deleteQuote(id)
+                SyncDiff.snapshotRemoveQuote(id: id) // 防误报"远端已删除摘抄"
                 SyncLog.append(kind: "quoteDelete", target: label, status: "synced")
                 OfflineStore.removeQuote(id: id)
             } catch {

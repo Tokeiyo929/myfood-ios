@@ -125,7 +125,10 @@ final class HistoryViewModel {
                     }
                     record["image_path"] = upload["path"] as! String
                     record["image_metadata"] = meta
-                    _ = try await API.submitFood(record)
+                    let res = try await API.submitFood(record)
+                    var pushed = record
+                    pushed["id"] = res["id"] as! Int
+                    SyncDiff.snapshotUpsertFood(pushed) // 已推内容并入快照，防误报"远端新增"
                     SyncLog.append(kind: "create", target: recordName(record), status: "synced")
                 } catch {
                     guard isNetworkError(error) else { throw error }
