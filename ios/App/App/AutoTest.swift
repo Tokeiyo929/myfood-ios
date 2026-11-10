@@ -190,21 +190,35 @@ enum AutoTest {
             check(TestFixture.foods.count == 81 && OfflineStore.pendingCount() == 0, "补传幂等创建不生成重复记录")
         }
 
+        // 5xx：服务端故障与断网同策略——读回落缓存、写入队待重试（手动同步仍原样报告）
         FixtureProtocol.handler = { _ in (500, ["error": "服务端拒绝"]) }
         let settings = SettingsViewModel()
         await settings.runManualSync()
         check(settings.syncStatus == "同步失败：服务端拒绝" && !settings.syncing, "手动同步失败保留错误状态")
         let history = HistoryViewModel()
         await history.loadRecords(reset: true)
-        check(history.records.isEmpty && history.toast == "服务端拒绝", "服务端失败不伪装为历史离线成功")
+        check(!history.records.isEmpty && history.toast == "离线数据（可能不是最新）", "5xx 读取回落本地缓存")
         let map = FoodMapViewModel()
         map.allFoods = [["id": 80, "category_rank": ["c": 2]]]
+        try await map.applyRankOrder(list: [["id": 80]], cat: "c")
+        check(OfflineStore.pendingCount() == 1, "排名 5xx 入队待重试，不报错误")
+        FixtureProtocol.handler = TestFixture.respond
+        try await SyncEngine.drain()
+        check(OfflineStore.pendingCount() == 0, "排名离线队列恢复联网后排空")
+        // 4xx：业务错误必须原样报告，不得伪装成离线成功
+        FixtureProtocol.handler = { _ in (400, ["error": "参数有误"]) }
+        let history2 = HistoryViewModel()
+        await history2.loadRecords(reset: true)
+        check(history2.records.isEmpty && history2.toast == "参数有误", "业务失败不伪装为历史离线成功")
+        let map2 = FoodMapViewModel()
+        map2.allFoods = [["id": 80, "category_rank": ["c": 2]]]
         do {
-            try await map.applyRankOrder(list: [["id": 80]], cat: "c")
+            try await map2.applyRankOrder(list: [["id": 80]], cat: "c")
             check(false, "排名业务失败必须报告")
         } catch {
             check(OfflineStore.pendingCount() == 0, "排名业务失败不进入离线队列")
         }
+        FixtureProtocol.handler = TestFixture.respond
     }
 
     @MainActor
