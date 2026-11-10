@@ -1061,8 +1061,11 @@ struct VoiceButtonView: View {
 
 struct FlavorWheelView: View {
     @Binding var levels: [String: Int]
-    // 一次拖动只作用一个轴：按下时锁定，松手才解除
+    // 一次拖动只作用一个轴：按住生效时锁定，松手才解除
     @State private var activeAxis: Int?
+    // 防误触（详情页在 ScrollView 里，零距离拖动会吃掉滚动并误改数值）：
+    // 轻点=直接设值；按住 0.2s 进入连续拖动（轻震确认）；划过=正常滚动页面
+    @State private var dragLive = false
 
     var body: some View {
         GeometryReader { geo in
@@ -1111,51 +1114,77 @@ struct FlavorWheelView: View {
             }
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        guard let c = AppConfig.shared, !c.flavors.isEmpty else { return }
-                        let scale = c.flavorScale
-                        let p = g.location
-                        let cx = size.width / 2, cy = size.height / 2
-                        let r = min(size.width, size.height) * 0.34
-                        // 命中最近轴（移植 nearestAxis）；拖动中锁定首触轴，避免滑过中心时跳轴
-                        let best: Int
-                        if let locked = activeAxis, locked < c.flavors.count {
-                            best = locked
-                        } else {
-                            let touchAngle = atan2(p.y - cy, p.x - cx)
-                            var hit = 0
-                            var bestDiff = CGFloat.greatestFiniteMagnitude
-                            for i in c.flavors.indices {
-                                let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
-                                var diff = touchAngle - a
-                                while diff > .pi { diff -= 2 * .pi }
-                                while diff < -.pi { diff += 2 * .pi }
-                                if abs(diff) < bestDiff { bestDiff = abs(diff); hit = i }
-                            }
-                            best = hit
-                            activeAxis = hit
+                SpatialTapGesture()
+                    .onEnded { g in
+                        // 轻点：直接把最近轴设为点按位置的值
+                        if let axis = nearestAxis(at: g.location, size: size) {
+                            setLevel(at: g.location, size: size, axis: axis)
                         }
-                        // 投影长度映射回 level（移植 updateLevel）
-                        let a = -CGFloat.pi / 2 + CGFloat(best) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
-                        let proj = (p.x - cx) * cos(a) + (p.y - cy) * sin(a)
-                        guard r > 0 else { return }
-                        let maxLv = CGFloat(scale["max"]!), minLv = CGFloat(scale["min"]!)
-                        let lv = Int(round(proj / r * (maxLv - minLv))) + scale["min"]!
-                        let clamped = max(scale["min"]!, min(scale["max"]!, lv))
-                        levels[c.flavors[best]] = clamped
                     }
-                    .onEnded { _ in activeAxis = nil }
+            )
+            .highPriorityGesture(
+                LongPressGesture(minimumDuration: 0.2)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        guard case let .second(_, drag) = value else { return }
+                        if !dragLive {
+                            dragLive = true
+                            // 生效时视觉反馈弱：轻震一次让用户确认进入调整
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            // 命中最近轴；拖动中锁定首触轴，避免滑过中心时跳轴
+                            activeAxis = nearestAxis(at: drag.location, size: size)
+                        }
+                        if let axis = activeAxis {
+                            setLevel(at: drag.location, size: size, axis: axis)
+                        }
+                    }
+                    .onEnded { _ in
+                        dragLive = false
+                        activeAxis = nil
+                    }
             )
         }
+    }
+
+    // 命中最近轴（移植 nearestAxis）
+    private func nearestAxis(at p: CGPoint, size: CGSize) -> Int? {
+        guard let c = AppConfig.shared, !c.flavors.isEmpty else { return nil }
+        let cx = size.width / 2, cy = size.height / 2
+        let touchAngle = atan2(p.y - cy, p.x - cx)
+        var hit = 0
+        var bestDiff = CGFloat.greatestFiniteMagnitude
+        for i in c.flavors.indices {
+            let a = -CGFloat.pi / 2 + CGFloat(i) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
+            var diff = touchAngle - a
+            while diff > .pi { diff -= 2 * .pi }
+            while diff < -.pi { diff += 2 * .pi }
+            if abs(diff) < bestDiff { bestDiff = abs(diff); hit = i }
+        }
+        return hit
+    }
+
+    // 投影长度映射回 level（移植 updateLevel）
+    private func setLevel(at p: CGPoint, size: CGSize, axis: Int) {
+        guard let c = AppConfig.shared, !c.flavors.isEmpty, c.flavors.indices.contains(axis) else { return }
+        let scale = c.flavorScale
+        let cx = size.width / 2, cy = size.height / 2
+        let r = min(size.width, size.height) * 0.34
+        guard r > 0 else { return }
+        let a = -CGFloat.pi / 2 + CGFloat(axis) * CGFloat.pi * 2 / CGFloat(c.flavors.count)
+        let proj = (p.x - cx) * cos(a) + (p.y - cy) * sin(a)
+        let maxLv = CGFloat(scale["max"]!), minLv = CGFloat(scale["min"]!)
+        let lv = Int(round(proj / r * (maxLv - minLv))) + scale["min"]!
+        levels[c.flavors[axis]] = max(scale["min"]!, min(scale["max"]!, lv))
     }
 }
 
 // MARK: - 偏好竖条（拖动选偏好；移植 PreferenceTrack 交互）
+// 防误触与 FlavorWheelView 同一套：轻点选值，按住 0.2s 才连续拖动，划过不误改
 
 struct PreferenceTrackView: View {
     let selectedLevel: Int?
     var onLevel: (Int) -> Void
+    @State private var dragLive = false
 
     var body: some View {
         GeometryReader { geo in
@@ -1182,12 +1211,24 @@ struct PreferenceTrackView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .contentShape(Rectangle())
             .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
+                SpatialTapGesture()
+                    .onEnded { g in
                         guard options.count >= 2 else { return }
-                        let ratio = max(0, min(1, 1 - g.location.y / geo.size.height))
-                        onLevel(Int(round(CGFloat(minL) + ratio * CGFloat(maxL - minL))))
+                        setLevel(y: g.location.y, height: geo.size.height, minL: minL, maxL: maxL)
                     }
+            )
+            .highPriorityGesture(
+                LongPressGesture(minimumDuration: 0.2)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        guard options.count >= 2, case let .second(_, drag) = value else { return }
+                        if !dragLive {
+                            dragLive = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                        setLevel(y: drag.location.y, height: geo.size.height, minL: minL, maxL: maxL)
+                    }
+                    .onEnded { _ in dragLive = false }
             )
         }
         .overlay {
@@ -1195,5 +1236,11 @@ struct PreferenceTrackView: View {
                 Text("请选择").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.primary)
             }
         }
+    }
+
+    private func setLevel(y: CGFloat, height: CGFloat, minL: Int, maxL: Int) {
+        guard height > 0, maxL > minL else { return }
+        let ratio = max(0, min(1, 1 - y / height))
+        onLevel(Int(round(CGFloat(minL) + ratio * CGFloat(maxL - minL))))
     }
 }
