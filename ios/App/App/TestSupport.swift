@@ -392,7 +392,7 @@ enum CoreRegression {
         OfflineStore.enqueue(patch)
         FixtureProtocol.handler = { _ in (503, ["error": "稍后重试"]) }
         do { try await SyncEngine.drain(); report(false, "同步错误必须报告") }
-        catch { report(error.localizedDescription == "上传失败", "同步错误传给调用方") }
+        catch { report(error.localizedDescription == "稍后重试", "同步错误传给调用方") } // 服务端 error 字段透传，不再吞成笼统"上传失败"
         report(OfflineStore.pendingCount() == 1 && OfflineStore.localImageData(imagePath) != nil, "HTTP 失败保留队列与原图")
         FixtureProtocol.handler = { request in
             if request.url?.path == "/api/upload" { return (200, ["path": "/myfood/replaced.jpg"]) }
