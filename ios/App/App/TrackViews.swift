@@ -141,6 +141,9 @@ enum TrackDestination: Hashable {
 struct TrackView: View {
     @Environment(AppModel.self) private var app
     var day: String?
+    // 相机位置交给 Map 双向绑定（用户拖动不再被每次刷新拉回）；初始机位只设一次
+    @State private var camera: MapCameraPosition = .automatic
+    @State private var didCenter = false
 
     private var vm: TrackViewModel { day == nil ? app.tracks : app.dayVM }
 
@@ -168,25 +171,37 @@ struct TrackView: View {
                 }
             }
         }
-        .task { await vm.load(day: day) }
+        .task {
+            await vm.load(day: day)
+            centerOnInitial()
+        }
+    }
+
+    // 初始机位（仅一次）：今天页以当前位置为中心，历史某天按轨迹起点
+    private func centerOnInitial() {
+        guard !didCenter else { return }
+        let center: CLLocationCoordinate2D?
+        if day == nil, let here = TrackRecorder.shared.lastKnownCoordinate {
+            center = here
+        } else {
+            center = vm.coords.first
+        }
+        if let center {
+            camera = .region(MKCoordinateRegion(center: center, latitudinalMeters: 800, longitudinalMeters: 800))
+            didCenter = true
+        }
     }
 
     private var mapSection: some View {
-        let position: MapCameraPosition = {
-            if day == nil, let here = TrackRecorder.shared.lastKnownCoordinate {
-                return .region(MKCoordinateRegion(center: here, latitudinalMeters: 800, longitudinalMeters: 800))
-            }
-            if let first = vm.coords.first {
-                return .region(MKCoordinateRegion(center: first, latitudinalMeters: 800, longitudinalMeters: 800))
-            }
-            return .automatic
-        }()
-        return Map(position: .constant(position)) {
+        Map(position: $camera) {
             if !vm.coords.isEmpty {
                 MapPolyline(coordinates: vm.coords)
                     .stroke(Theme.primary, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
             UserAnnotation()
+        }
+        .mapControls {
+            MapUserLocationButton() // 右下角「回到自身位置」，点击后还会跟随移动
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(8)
