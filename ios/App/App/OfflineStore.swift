@@ -112,7 +112,8 @@ enum OfflineStore {
     }
 
     // 缓存写盘走后台串行队列（write-behind），读取和待同步操作仍同步执行。
-    // 例外：pending.json 必须同步写（同步引擎自身依赖它，见 savePendingUnlocked）。
+    // 例外：pending.json 必须同步写（同步引擎自身依赖它，见 savePendingUnlocked）；
+    // 同步 stash/快照也必须同步写——写完立即被 compute() 同步读，write-behind 会读到旧文件，冲突判定基于陈旧数据。
     private static let ioQueue = DispatchQueue(label: "myfood.offline.io", qos: .utility)
 
     // 测试与 wipeAll 前调用：等挂起的写盘全部落完
@@ -131,6 +132,14 @@ enum OfflineStore {
     static func loadJSON(name: String) -> Any? {
         lock.lock(); defer { lock.unlock() }
         return loadJSONUnlocked(name: name)
+    }
+
+    // stash/快照这类"写完即读"的文件走同步写，语义同 pending.json 的同步写先例
+    static func saveJSONSync(_ obj: Any, name: String) {
+        lock.lock(); defer { lock.unlock() }
+        guard JSONSerialization.isValidJSONObject(obj),
+              let data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+        try? data.write(to: dirUnlocked().appendingPathComponent(name), options: .atomic)
     }
 
     private static func saveJSONUnlocked(_ obj: Any, name: String) {

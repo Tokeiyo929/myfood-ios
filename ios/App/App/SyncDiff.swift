@@ -85,7 +85,8 @@ enum SyncDiff {
     }
 
     static func stashRemote(foods: [[String: Any]], quotes: [[String: Any]]) {
-        OfflineStore.saveJSON(["time": Date().timeIntervalSince1970, "foods": foods, "quotes": quotes], name: stashFile)
+        // 同步写：runManualSync/compute 紧跟着同步读 stash，write-behind 会读到旧文件
+        OfflineStore.saveJSONSync(["time": Date().timeIntervalSince1970, "foods": foods, "quotes": quotes], name: stashFile)
     }
 
     static func clearStash() {
@@ -409,7 +410,7 @@ enum SyncDiff {
     }
 
     private static func saveSnapshot(foods: [String: Any], quotes: [String: Any]) {
-        OfflineStore.saveJSON(["foods": foods, "quotes": quotes], name: snapshotFile)
+        OfflineStore.saveJSONSync(["foods": foods, "quotes": quotes], name: snapshotFile)
     }
 }
 
