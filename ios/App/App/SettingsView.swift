@@ -1,6 +1,6 @@
 import SwiftUI
 
-// 设置 tab（原 UIKit SettingsViewController 移植）：后端/定位说明/手动同步/离线能力
+// 设置 tab（原 UIKit SettingsViewController 移植）：手动同步/修改记录/版本
 @MainActor
 @Observable
 final class SettingsViewModel {
@@ -149,12 +149,9 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                infoCard("后端", BASE_URL)
-                infoCard("定位说明", "轨迹默认自动记录：启动后请在系统弹窗中选择「允许」，并设为「始终允许」可锁屏持续记录")
                 syncCard
                 logCard
                 versionCard
-                infoCard("离线能力", "断网时可浏览缓存数据；建档/编辑/删除/换图/排名/摘抄会本地保存，恢复联网后自动同步")
                 Spacer()
             }
             .padding(20)
@@ -290,16 +287,6 @@ struct SettingsView: View {
         var parts = ["当前构建 \(model.currentBuild)"]
         if let remote = model.remoteBuild { parts.append("远端 ipa-\(remote)") }
         return parts.joined(separator: " · ")
-    }
-
-    private func infoCard(_ title: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 15, weight: .bold))
-            Text(text).font(.system(size: 13)).foregroundStyle(.secondary).lineSpacing(3)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color(white: 0.96), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
