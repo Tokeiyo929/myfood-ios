@@ -1130,7 +1130,7 @@ struct FlavorWheelView: View {
                 LongPressGesture(minimumDuration: 0.2)
                     .sequenced(before: DragGesture(minimumDistance: 0))
                     .onChanged { value in
-                        guard case let .second(_, drag) = value else { return }
+                        guard case let .second(_, drag?) = value else { return }
                         if !dragLive {
                             dragLive = true
                             // 生效时视觉反馈弱：轻震一次让用户确认进入调整
@@ -1225,7 +1225,7 @@ struct PreferenceTrackView: View {
                 LongPressGesture(minimumDuration: 0.2)
                     .sequenced(before: DragGesture(minimumDistance: 0))
                     .onChanged { value in
-                        guard options.count >= 2, case let .second(_, drag) = value else { return }
+                        guard options.count >= 2, case let .second(_, drag?) = value else { return }
                         if !dragLive {
                             dragLive = true
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()

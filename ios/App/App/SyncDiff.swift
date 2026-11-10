@@ -90,7 +90,7 @@ enum SyncDiff {
             if dirtyFoods.contains(id), let prev = prevFoods[id] { f[String(id)] = prev } else { f[String(id)] = normalizeFood(r) }
         }
         for id in dirtyFoods where f[String(id)] == nil { // 远端已删但本地有未推送改动：保留旧基线，维持 ⚠ 可见
-            if let prev = prevFoods[String(id)] { f[String(id)] = prev }
+            if let prev = prevFoods[id] { f[String(id)] = prev }
         }
         var q: [String: Any] = [:]
         for r in quotes {
@@ -98,7 +98,7 @@ enum SyncDiff {
             if dirtyQuotes.contains(id), let prev = prevQuotes[id] { q[String(id)] = prev } else { q[String(id)] = normalizeQuote(r) }
         }
         for id in dirtyQuotes where q[String(id)] == nil {
-            if let prev = prevQuotes[String(id)] { q[String(id)] = prev }
+            if let prev = prevQuotes[id] { q[String(id)] = prev }
         }
         saveSnapshot(foods: f, quotes: q)
     }
