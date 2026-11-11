@@ -230,6 +230,7 @@ enum SyncDiff {
         let dirty = localDirtyFoodIds()
         let localDeletes = localDeleteFoodIds()
 
+        var healedFoods: [[String: Any]] = [] // 自愈记录先收集，循环后批量并入快照（逐条全量写曾把主线程卡爆触发 watchdog 击杀）
         for r in stashFoods {
             guard let id = r["id"] as? Int else { continue }
             let norm = normalizeFood(r)
@@ -237,13 +238,13 @@ enum SyncDiff {
                 if !recordEqual(norm, base) {
                     // 三方判定：stash 与本地工作区一致 → 是自己已同步的内容，自愈陈旧快照，不误报 ↓
                     if let local = recordsById[id], recordEqual(norm, normalizeFood(local)) {
-                        snapshotUpsertFood(r)
+                        healedFoods.append(r)
                     } else {
                         st.remoteChangedIds.append(id)
                     }
                 }
             } else if let local = recordsById[id], recordEqual(norm, normalizeFood(local)) {
-                snapshotUpsertFood(r) // 快照缺该 id 但本地已有同内容 → 自己推送的，补快照
+                healedFoods.append(r) // 快照缺该 id 但本地已有同内容 → 自己推送的，补快照
             } else {
                 st.remoteChangedIds.append(id) // 远端新增
             }
@@ -285,6 +286,7 @@ enum SyncDiff {
                                           uniquingKeysWith: { _, n in n })
         let cachedQuotesById = Dictionary(OfflineStore.cachedQuotes().compactMap { q in (q["id"] as? Int).map { ($0, q) } },
                                           uniquingKeysWith: { _, n in n })
+        var healedQuotes: [[String: Any]] = []
         for r in stashQuotes {
             guard let id = r["id"] as? Int else { continue }
             let norm = normalizeQuote(r)
@@ -292,18 +294,21 @@ enum SyncDiff {
                 if !recordEqual(norm, base) {
                     // 同 foods 的三方判定：自己已同步的内容不误报
                     if let local = cachedQuotesById[id], recordEqual(norm, normalizeQuote(local)) {
-                        snapshotUpsertQuote(r)
+                        healedQuotes.append(r)
                     } else {
                         st.remoteQuoteIds.append(id)
                     }
                 }
             } else if let local = cachedQuotesById[id], recordEqual(norm, normalizeQuote(local)) {
-                snapshotUpsertQuote(r)
+                healedQuotes.append(r)
             } else {
                 st.remoteQuoteIds.append(id) // 远端新增
             }
         }
         for id in baseQuotes.keys where remoteQuotesById[id] == nil { st.remoteQuoteDeletedIds.append(id) }
+        // 自愈批量落盘：每轮 compute 只做 1-2 次全量序列化写，替代逐条 N 次
+        if !healedFoods.isEmpty { snapshotUpsertFoods(healedFoods) }
+        if !healedQuotes.isEmpty { snapshotUpsertQuotes(healedQuotes) }
         return st
     }
 
@@ -396,6 +401,29 @@ enum SyncDiff {
         var foods = raw["foods"] as? [String: Any] ?? [:]
         foods[String(id)] = normalizeFood(rec)
         saveSnapshot(foods: foods, quotes: raw["quotes"] as? [String: Any] ?? [:])
+    }
+
+    // 批量版：compute() 自愈循环专用——一次全量读改写。逐条调用时每条都是
+    // "读整个快照+全量 JSONSerialization 校验+同步写盘"，N 条自愈曾把主线程卡过
+    // scene-update 的 10s 死线被 watchdog 击杀（crash-nov11.ips 0x8BADF00D）
+    static func snapshotUpsertFoods(_ recs: [[String: Any]]) {
+        guard !recs.isEmpty else { return }
+        let raw = snapshotRaw()
+        var foods = raw["foods"] as? [String: Any] ?? [:]
+        for rec in recs {
+            if let id = rec["id"] as? Int { foods[String(id)] = normalizeFood(rec) }
+        }
+        saveSnapshot(foods: foods, quotes: raw["quotes"] as? [String: Any] ?? [:])
+    }
+
+    static func snapshotUpsertQuotes(_ quotes: [[String: Any]]) {
+        guard !quotes.isEmpty else { return }
+        let raw = snapshotRaw()
+        var q = raw["quotes"] as? [String: Any] ?? [:]
+        for quote in quotes {
+            if let id = quote["id"] as? Int { q[String(id)] = normalizeQuote(quote) }
+        }
+        saveSnapshot(foods: raw["foods"] as? [String: Any] ?? [:], quotes: q)
     }
 
     static func snapshotPatchFood(id: Int, fields: [String: Any]) {
