@@ -148,3 +148,19 @@ jobs:
             --latest
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Prune old ipa releases (keep latest only)
+        if: github.ref == 'refs/heads/master'
+        run: |
+          # 只保留最新一个 release：删旧 ipa-N release 并连带删 tag（--cleanup-tag 防孤儿 tag 堆积）
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName \
+            --jq '.[].tagName' | grep -E '^ipa-[0-9]+$' |
+          while read -r tag; do
+            n=${tag#ipa-}
+            if [ "$n" -lt "${{ github.run_number }}" ]; then
+              echo "pruning $tag"
+              gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            fi
+          done
+        env:
+          GH_TOKEN: ${{ github.token }}
