@@ -139,6 +139,7 @@ struct QuotesView: View {
             }
             .listStyle(.plain)
             .scrollDismissesKeyboard(.interactively)
+            .tapToDismissKeyboard()
             HStack(alignment: .bottom, spacing: 8) {
                 ZStack(alignment: .topLeading) {
                     TextEditor(text: $vm.input)
@@ -166,6 +167,7 @@ struct QuotesView: View {
         .navigationTitle("摘抄")
         .navigationBarTitleDisplayMode(.inline)
         .toast($vm.toast)
+        .keyboardDoneBar()
         .onAppear { vm.onAppear() }
         .onReceive(NotificationCenter.default.publisher(for: .myfoodDataSynced)) { _ in
             Task { await vm.load() }

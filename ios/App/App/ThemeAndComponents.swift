@@ -178,6 +178,28 @@ extension View {
     func toast(_ message: Binding<String?>) -> some View {
         modifier(ToastModifier(message: message))
     }
+
+    // MARK: 键盘收起三件套（HIG virtual-keyboards：输入辅助栏与任务相关、重要 UI 保持可见）
+
+    // 键盘上方"完成"栏：TextEditor 的 Return 是换行，必须给个明确收起手段
+    func keyboardDoneBar() -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { hideKeyboard() }
+            }
+        }
+    }
+
+    // 点空白收起（滚动区与 .scrollDismissesKeyboard(.interactively) 并存）
+    func tapToDismissKeyboard() -> some View {
+        onTapGesture { hideKeyboard() }
+    }
+}
+
+// 全局收起键盘（TextField/TextEditor 通用；做成自由函数方便闭包内无接收者调用）
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
 // 类别/原料 chip

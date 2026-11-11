@@ -664,7 +664,7 @@ struct DetailView: View {
                     .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onTapGesture { hideKeyboard() }
+                .tapToDismissKeyboard()
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -672,6 +672,7 @@ struct DetailView: View {
         .navigationTitle("详情")
         .navigationBarTitleDisplayMode(.inline)
         .toast($vm.toast)
+        .keyboardDoneBar()
         .task(id: recordId) {
             vm.open(recordId: recordId)
             if !vm.loaded { await vm.loadAll() }
@@ -921,14 +922,12 @@ struct DetailView: View {
         TextField(ph, text: text)
             .font(.system(size: 14))
             .keyboardType(number ? .numbersAndPunctuation : .default)
+            .submitLabel(.done)
+            .onSubmit { hideKeyboard() } // 表单字段 Return 直接收起
             .padding(.horizontal, 10)
             .frame(height: 40)
             .background(Color(white: 0.97), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.88)))
-    }
-
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 

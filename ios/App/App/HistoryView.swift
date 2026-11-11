@@ -208,6 +208,7 @@ struct HistoryView: View {
                 DetailView(recordId: recordId)
             }
             .toast($vm.toast)
+            .keyboardDoneBar()
             .onAppear { vm.onAppear() }
             .onChange(of: vm.search) { _, newValue in vm.onSearchChange(newValue) }
             .photosPicker(isPresented: $vm.showingPhotoPicker, selection: $vm.pickedItem, matching: .images)
@@ -225,6 +226,11 @@ struct HistoryView: View {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("搜索名称/品牌", text: $vm.search)
                 .font(.system(size: 15))
+                .submitLabel(.search)
+                .onSubmit {
+                    hideKeyboard() // Return=立即搜索并收起，不等 500ms 防抖
+                    Task { await vm.loadRecords(reset: true) }
+                }
             if !vm.search.isEmpty {
                 Button { vm.search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
             }
@@ -258,6 +264,7 @@ struct HistoryView: View {
         }
         .refreshable { await app.history.loadRecords(reset: true) }
         .scrollDismissesKeyboard(.interactively)
+        .tapToDismissKeyboard()
     }
 }
 
