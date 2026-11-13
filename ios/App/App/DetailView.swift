@@ -995,104 +995,102 @@ struct OCRPanelView: View {
     @State private var stroking = false
 
     var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 10) {
-                HStack {
-                    Text("在图上点选文字").font(.system(size: 16, weight: .bold))
-                    Spacer()
-                    Button("完成") { ocr.apply(); onClose() }
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Theme.primary)
-                }
-                HStack(spacing: 8) {
-                    ForEach(0..<3, id: \.self) { i in
-                        Button(OCRViewModel.targetNames[i]) { ocr.target = i }
-                            .font(.system(size: 13))
-                            .padding(.horizontal, 12).padding(.vertical, 5)
-                            .background(ocr.target == i ? Theme.primary : Color(white: 0.94), in: Capsule())
-                            .foregroundStyle(ocr.target == i ? Color.white : Theme.primary)
-                    }
-                    Spacer()
-                }
-                Text(ocr.statusText).font(.system(size: 12)).foregroundStyle(.secondary)
-                Text("已选：\(ocr.builtText.isEmpty ? "（空）" : ocr.builtText)")
-                    .font(.system(size: 14)).foregroundStyle(Theme.primary)
-                HStack {
-                    Spacer()
-                    Button("＋添加") { ocr.apply() }
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 12).padding(.vertical, 5)
-                        .background(Theme.primary, in: Capsule())
-                    Button("清空") { ocr.picked.removeAll() }
-                        .font(.system(size: 13))
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 12).padding(.vertical, 5)
-                        .overlay(Capsule().stroke(Color.red.opacity(0.5)))
-                }
-                charGrid
+        VStack(spacing: 10) {
+            HStack {
+                Text("在图上点选文字").font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button("完成") { ocr.apply(); onClose() }
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.primary)
             }
-            .padding(14)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            HStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { i in
+                    Button(OCRViewModel.targetNames[i]) { ocr.target = i }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(ocr.target == i ? Theme.primary : Color(white: 0.94), in: Capsule())
+                        .foregroundStyle(ocr.target == i ? Color.white : Theme.primary)
+                }
+                Spacer()
+            }
+            Text(ocr.statusText).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text("已选：\(ocr.builtText.isEmpty ? "（空）" : ocr.builtText)")
+                .font(.system(size: 14)).foregroundStyle(Theme.primary)
+            HStack {
+                Spacer()
+                Button("＋添加") { ocr.apply() }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(Theme.primary, in: Capsule())
+                Button("清空") { ocr.picked.removeAll() }
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .overlay(Capsule().stroke(Color.red.opacity(0.5)))
+            }
+            charGrid
         }
+        .padding(14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task { await ocr.recognize() }
     }
 
     // 字格网格：轻点切换单字；按住 0.2s 进入连续划选（对齐轮盘防误触）；字多时面板内滚动
+    // 不用 GeometryReader 占位：它纵向贪吃满屏，卡片下方会留大片空白；宽度直接按屏宽扣边距推
     private var charGrid: some View {
-        GeometryReader { geo in
-            let columns = 8
-            let spacing: CGFloat = 4
-            let cellW = (geo.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-            let cellH = cellW + 8
-            let rows = (ocr.chars.count + columns - 1) / columns
-            ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: columns), spacing: spacing) {
-                    ForEach(ocr.chars.indices, id: \.self) { idx in
-                        Text(ocr.chars[idx])
-                            .font(.system(size: 17))
-                            .frame(width: cellW, height: cellH)
-                            .background(ocr.picked.contains(idx) ? Theme.primary.opacity(0.25) : Color.white, in: RoundedRectangle(cornerRadius: 6))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.85)))
-                    }
+        let columns = 8
+        let spacing: CGFloat = 4
+        let inner = UIScreen.main.bounds.width - 32 - 28 // cover 左右 16×2 + 白卡左右 14×2
+        let cellW = (inner - CGFloat(columns - 1) * spacing) / CGFloat(columns)
+        let cellH = cellW + 8
+        let rows = (ocr.chars.count + columns - 1) / columns
+        return ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: columns), spacing: spacing) {
+                ForEach(ocr.chars.indices, id: \.self) { idx in
+                    Text(ocr.chars[idx])
+                        .font(.system(size: 17))
+                        .frame(width: cellW, height: cellH)
+                        .background(ocr.picked.contains(idx) ? Theme.primary.opacity(0.25) : Color.white, in: RoundedRectangle(cornerRadius: 6))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.85)))
                 }
-                .contentShape(Rectangle())
-                // 手势挂在网格内容上：坐标系随滚动走，划选命中才不会算错行
-                .gesture(
-                    SpatialTapGesture()
-                        .onEnded { g in
-                            if let idx = hitIndex(location: g.location, width: geo.size.width, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count) {
-                                ocr.toggle(idx)
-                            }
-                        }
-                )
-                .gesture(
-                    LongPressGesture(minimumDuration: 0.2)
-                        .sequenced(before: DragGesture(minimumDistance: 0))
-                        .onChanged { value in
-                            guard case let .second(_, drag?) = value else { return }
-                            let idx = hitIndex(location: drag.location, width: geo.size.width, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count)
-                            if !stroking {
-                                stroking = true
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                if let idx { ocr.touchStarted(idx); lastHit = idx }
-                            } else if let idx, idx != lastHit {
-                                ocr.touchMoved(idx)
-                                lastHit = idx
-                            }
-                        }
-                        .onEnded { _ in
-                            if stroking { ocr.touchEnded() }
-                            stroking = false
-                            lastHit = nil
-                        }
-                )
             }
-            .frame(height: min(CGFloat(max(rows, 1)) * (cellH + spacing), geo.size.height))
-            .scrollDisabled(stroking) // 划选中锁滚动：触摸点在内容坐标系里才稳定
+            .contentShape(Rectangle())
+            // 手势挂在网格内容上：坐标系随滚动走，划选命中才不会算错行
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { g in
+                        if let idx = hitIndex(location: g.location, width: inner, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count) {
+                            ocr.toggle(idx)
+                        }
+                    }
+            )
+            .gesture(
+                LongPressGesture(minimumDuration: 0.2)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        guard case let .second(_, drag?) = value else { return }
+                        let idx = hitIndex(location: drag.location, width: inner, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count)
+                        if !stroking {
+                            stroking = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if let idx { ocr.touchStarted(idx); lastHit = idx }
+                        } else if let idx, idx != lastHit {
+                            ocr.touchMoved(idx)
+                            lastHit = idx
+                        }
+                    }
+                    .onEnded { _ in
+                        if stroking { ocr.touchEnded() }
+                        stroking = false
+                        lastHit = nil
+                    }
+            )
         }
+        .frame(height: min(CGFloat(max(rows, 1)) * (cellH + spacing), 320))
+        .scrollDisabled(stroking) // 划选中锁滚动：触摸点在内容坐标系里才稳定
     }
 
     private func hitIndex(location: CGPoint, width: CGFloat, columns: Int, cellW: CGFloat, cellH: CGFloat, spacing: CGFloat, count: Int) -> Int? {
