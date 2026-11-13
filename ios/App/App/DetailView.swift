@@ -22,6 +22,7 @@ final class DetailViewModel {
     var currentRepurchase = 0
     var prevRecordLabel = ""
     var worthIt = "" // "" / "yes" / "no"
+    var freshness = "" // FoodFreshness.rawValue / ""（未选择）
     var selectedCategory = ""
     var categorySearch = ""
     var categorySuggestions: [String] = []
@@ -127,6 +128,7 @@ final class DetailViewModel {
         currentRepurchase = f["repurchase"] as? Int ?? 0
         prevRecordLabel = Self.prevRecordLabel(f["modify_at"] as? [String])
         worthIt = Self.parseWorth(f["worth_it"])
+        freshness = FoodFreshness.normalize(f["freshness"])
         selectedCategory = (f["categories"] as? [String])?.first ?? ""
         ingredients = f["ingredients"] as? [[String: Any]] ?? []
         draft = CommentDraft(comments: f["comment"] as? [String] ?? [])
@@ -290,6 +292,7 @@ final class DetailViewModel {
             "flavors": flavors,
             "preference": preference,
             "worth_it": worthIt == "" ? NSNull() : NSNumber(value: worthIt == "yes"),
+            "freshness": freshness,
             "comment": newComments,
         ]
         let id = f["id"] as! Int
@@ -757,6 +760,7 @@ struct DetailView: View {
                 field("原价", text: $vm.priceOrig, number: true)
                 field("折扣价(选填)", text: $vm.priceDisc, number: true)
             }
+            freshnessPicker(vm)
             HStack(spacing: 8) {
                 Text("值不值得").font(.system(size: 14, weight: .bold))
                 Button {
@@ -915,6 +919,42 @@ struct DetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title).font(.system(size: 15, weight: .bold))
             content()
+        }
+    }
+
+    // 新鲜度单选：四选一、非必填；再次轻点已选项即清除
+    private func freshnessPicker(_ vm: DetailViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("新鲜度").font(.system(size: 14, weight: .bold))
+                Text("选填").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), alignment: .leading)], alignment: .leading, spacing: 8) {
+                ForEach(FoodFreshness.allCases) { item in
+                    let selected = vm.freshness == item.rawValue
+                    Button {
+                        vm.freshness = selected ? "" : item.rawValue
+                    } label: {
+                        HStack(spacing: 4) {
+                            if selected {
+                                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                            }
+                            Text(item.label)
+                                .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(selected ? Color.white : Theme.primary)
+                        .padding(.horizontal, 12)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(selected ? Theme.primary : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? Theme.primary : Color(.separator)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("新鲜度 \(item.label)")
+                    .accessibilityHint(selected ? "再次轻点清除选择" : "选择\(item.label)")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                }
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # 觅食记 · MyFood iOS
 
-原生 SwiftUI 应用，最低 iOS 17。支持美食记录、拍照/相册建档、详情编辑、评论和语音输入、Vision OCR 划选、中国/欧洲美食地图、类别排名、后台轨迹、好词好句摘抄。API 地址统一在 `ios/App/App/API.swift`。
+原生 SwiftUI 应用，最低 iOS 17。支持美食记录、拍照/相册建档、详情编辑（含选填的新鲜度：日清/短保/冻转鲜/长保，四选一）、评论和语音输入、Vision OCR 划选、中国/欧洲美食地图、类别排名、后台轨迹、好词好句摘抄。API 地址统一在 `ios/App/App/API.swift`。
 
 ## 开发与构建
 
@@ -24,7 +24,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 bash tests/test_simulator_runner.sh
 ```
 
-Debug App 的 `-autoTest` 验证 API 编解码、配置、评论草稿、离线重放和真实页面模型；`-autoSmoke` 打开历史、详情、OCR、快速建档、两张美食地图、省份面板、排名、今日轨迹、每日记录、某天轨迹、设置和摘抄。runner 通过 marker/ack 握手截图。API 和远端图片共用可注入的 URLSession；fixture 未实现的请求直接失败，不访问正式服务。Release 不启用测试参数。首次授权、真实相机/语音、后台定位与锁屏恢复仍需设备验证。
+Debug App 的 `-autoTest` 验证 API 编解码、配置、评论草稿、新鲜度单选/清空、离线重放和真实页面模型；`-autoSmoke` 打开历史、详情、OCR、快速建档、两张美食地图、省份面板、排名、今日轨迹、每日记录、某天轨迹、设置和摘抄。runner 通过 marker/ack 握手截图。API 和远端图片共用可注入的 URLSession；fixture 未实现的请求直接失败，不访问正式服务。Release 不启用测试参数。首次授权、真实相机/语音、后台定位与锁屏恢复仍需设备验证。
 
 `tests/backend_api_test.py` 为独立后端集成测试，会创建并删除临时记录，必须显式提供测试服务地址：
 

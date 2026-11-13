@@ -114,7 +114,7 @@ final class HistoryViewModel {
                 }
                 var record: [String: Any] = [
                     "name": "", "brand_name": "", "price": NSNull(), "categories": [], "ingredients": [], "flavors": [],
-                    "preference": config.defaultPreference, "comment": [],
+                    "preference": config.defaultPreference, "comment": [], "freshness": "",
                     "image_metadata": meta,
                     "client_key": UUID().uuidString,
                 ]

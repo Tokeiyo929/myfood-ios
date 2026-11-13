@@ -12,6 +12,7 @@ struct DecoratedRecord {
     var brand: String { (record["brand_name"] as? String) ?? "" }
     var imagePath: String? { record["image_path"] as? String }
     var repurchase: Int { record["repurchase"] as? Int ?? 0 }
+    var freshness: String { FoodFreshness.normalize(record["freshness"]) }
     var prefKind: PrefKind?
     var flavorLabels: [String] = []
     var ingredientLabels: [String] = []

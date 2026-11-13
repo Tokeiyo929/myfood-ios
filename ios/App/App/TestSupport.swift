@@ -49,6 +49,7 @@ enum TestFixture {
         ],
         "pagination": ["page_size": 10, "max_page_size": 50],
         "image": ["max_dimension": 640, "quality": 0.5] as [String: Any],
+        "freshness": ["日清", "短保", "冻转鲜", "长保"],
     ]
     static var foods: [[String: Any]] = []
     static var requests: [URLRequest] = []
@@ -73,12 +74,14 @@ enum TestFixture {
             let ingredients: [[String: Any]] = manyIngredients
                 ? [["name": "奶油", "amount": 20], ["name": "面粉", "amount": 35], ["name": "鸡蛋", "amount": 15], ["name": "白砂糖", "amount": 12], ["name": "可可粉", "amount": 8], ["name": "乳酪", "amount": 6], ["name": "海盐", "amount": 1]]
                 : [["name": "奶油", "amount": 20]]
+            let freshness = ["日清", "短保", "冻转鲜", "长保", ""][id % 5]
             return ["id": id, "name": name, "brand_name": id % 6 == 0 ? "" : "测试品牌",
                     "price": id % 8 == 0 ? NSNull() : ([12 + id % 40, id % 10 == 0 ? 9.9 : NSNull()] as [Any]),
                     "categories": [cat], "category_rank": [cat: id],
                     "ingredients": ingredients, "flavors": [["name": "甜", "level": 75]],
                     "preference": pref, "comment": comments,
                     "worth_it": id % 2 == 0 ? "yes" : (id % 3 == 0 ? "no" : ""),
+                    "freshness": freshness,
                     "image_path": noImage ? "" : "myfood/fixture-\(id).jpg",
                     "image_metadata": ["taken_at": "2026:11:03 12:00:00"], "modify_at": ["2026-11-03"]] as [String: Any]
         }
@@ -208,6 +211,10 @@ enum CoreRegression {
     static func run(report: (Bool, String) -> Void) async throws {
         let config = try AppConfig(raw: TestFixture.config)
         report(config.flavorScale["default"] == 50 && config.defaultPreference == "偏好吃", "配置使用服务端刻度和默认偏好")
+        report(FoodFreshness.allCases.map(\.rawValue) == ["日清", "短保", "冻转鲜", "长保"], "新鲜度四选项与 worker 对齐")
+        report(FoodFreshness.normalize("冻转鲜") == "冻转鲜" && FoodFreshness.normalize("长保") == "长保"
+               && FoodFreshness.normalize(nil) == "" && FoodFreshness.normalize("隔夜") == "",
+               "新鲜度只认四项，缺省/未知值归一为空")
         for key in ["flavor_scale", "preferences", "pagination", "image"] {
             var invalid = TestFixture.config
             invalid.removeValue(forKey: key)
@@ -297,11 +304,15 @@ enum CoreRegression {
         _ = try await AppConfig.load()
         report(AppConfig.shared != nil, "配置失败后可重试")
         TestFixture.install()
-        let created = try await API.submitFood(["name": "中文🍰", "comment": ["奶油足"], "preference": config.defaultPreference])
+        let created = try await API.submitFood(["name": "中文🍰", "comment": ["奶油足"], "preference": config.defaultPreference, "freshness": "短保"])
         let id = created["id"] as! Int
-        _ = try await API.updateFoodDetails(id, fields: ["comment": ["修改后的中文🍰"], "worth_it": false])
-        let food = try await API.getFoodById(id)
-        report(food["comment"] as? [String] == ["修改后的中文🍰"] && food["worth_it"] as? String == "no", "JSON中文与worth读写往返")
+        _ = try await API.updateFoodDetails(id, fields: ["comment": ["修改后的中文🍰"], "worth_it": false, "freshness": "长保"])
+        var food = try await API.getFoodById(id)
+        report(food["comment"] as? [String] == ["修改后的中文🍰"] && food["worth_it"] as? String == "no"
+               && food["freshness"] as? String == "长保", "JSON中文/worth/新鲜度读写往返")
+        _ = try await API.updateFoodDetails(id, fields: ["freshness": ""])
+        food = try await API.getFoodById(id)
+        report(food["freshness"] as? String == "", "新鲜度可清空为非必填")
         _ = try await API.deleteFood(id)
         report(TestFixture.foods.count == 80, "隔离测试记录清理完成")
 
@@ -419,9 +430,33 @@ enum CoreRegression {
         let diffFoods = try await API.getAllFoods(limit: 50)
         let diffQuotes = (try await API.getQuotes())["items"] as! [[String: Any]]
         OfflineStore.mergeRecords(diffFoods) // 应用内 records 缓存始终保有上次同步的数据
-        SyncDiff.initializeSnapshotIfMissing(foods: diffFoods, quotes: diffQuotes)
+        // 升级兼容：旧 synced.json 没有后加的 freshness key，远端默认空串不得被误报成"远端更新"
+        var legacyFoods: [String: Any] = [:]
+        for r in diffFoods {
+            var normalized = SyncDiff.normalizeFood(r)
+            normalized.removeValue(forKey: "freshness")
+            if let id = r["id"] as? Int { legacyFoods[String(id)] = normalized }
+        }
+        var legacyQuotes: [String: Any] = [:]
+        for q in diffQuotes { if let id = q["id"] as? Int { legacyQuotes[String(id)] = SyncDiff.normalizeQuote(q) } }
+        OfflineStore.saveJSONSync(["foods": legacyFoods, "quotes": legacyQuotes], name: "synced.json")
+        SyncDiff.stashRemote(foods: diffFoods, quotes: diffQuotes)
+        report(!SyncDiff.compute().hasDiff, "旧快照缺 freshness 不误报远端更新")
+        SyncDiff.clearStash()
+        SyncDiff.rebuildSnapshot(foods: diffFoods, quotes: diffQuotes)
         SyncDiff.stashRemote(foods: diffFoods, quotes: diffQuotes)
         report(!SyncDiff.compute().hasDiff, "快照初始化后本地与远端无差异")
+        report(SyncDiff.fieldLabels["freshness"] == "新鲜度", "冲突明细展示新鲜度中文名")
+        if let idx = TestFixture.foods.firstIndex(where: { $0["id"] as? Int == 5 }) {
+            TestFixture.foods[idx]["freshness"] = "长保"
+        }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        let freshnessState = SyncDiff.compute()
+        report(freshnessState.remoteChangedIds == [5] && freshnessState.conflicts.isEmpty, "远端新鲜度变化计入 ↓")
+        if let idx = TestFixture.foods.firstIndex(where: { $0["id"] as? Int == 5 }) {
+            TestFixture.foods[idx]["freshness"] = "日清"
+        }
+        SyncDiff.rebuildSnapshot(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
         SyncDiff.clearStash()
         report(!SyncDiff.compute().hasDiff, "暂存缺失只代表远端未知，不误报全量删除")
         SyncDiff.stashRemote(foods: diffFoods, quotes: diffQuotes)

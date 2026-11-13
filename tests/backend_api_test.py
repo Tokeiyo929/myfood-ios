@@ -36,7 +36,7 @@ def run(base, proxy=None):
         status, created = call("POST", "/api/foods", {
             "name": name, "brand_name": "测试品牌", "price": [12.5, None],
             "categories": [], "ingredients": [], "flavors": [], "preference": "推荐吃",
-            "worth_it": True, "comment": comments, "image_path": "",
+            "worth_it": True, "freshness": "短保", "comment": comments, "image_path": "",
             "image_metadata": {}, "client_key": "autotest-" + uuid4().hex,
         })
         food_id = created.get("id")
@@ -44,18 +44,25 @@ def run(base, proxy=None):
         if isinstance(food_id, int):
             path = f"/api/foods/{food_id}"
             status, food = call("GET", path)
-            check("GET 中文/worth_it", status == 200 and food.get("name") == name
-                  and food.get("comment") == comments and food.get("worth_it") == "yes", str(food))
+            check("GET 中文/worth_it/freshness", status == 200 and food.get("name") == name
+                  and food.get("comment") == comments and food.get("worth_it") == "yes"
+                  and food.get("freshness") == "短保", str(food))
             comments += ["追加的一条评论"]
             status, _ = call("PATCH", path, {"comment": comments})
             read_status, food = call("GET", path)
             check("PATCH 中文评论", status == 200 and read_status == 200 and food.get("comment") == comments)
-            status, _ = call("PATCH", path, {"fields": {"name": "改名·草莓大福", "price": [18, 9.9], "worth_it": False}})
+            status, _ = call("PATCH", path, {"fields": {"name": "改名·草莓大福", "price": [18, 9.9], "worth_it": False, "freshness": "长保"}})
             read_status, food = call("GET", path)
-            check("PATCH 名称/价格/worth_it", status == 200 and read_status == 200
-                  and food.get("name") == "改名·草莓大福" and food.get("worth_it") == "no" and food.get("price") == [18, 9.9])
+            check("PATCH 名称/价格/worth_it/freshness", status == 200 and read_status == 200
+                  and food.get("name") == "改名·草莓大福" and food.get("worth_it") == "no"
+                  and food.get("price") == [18, 9.9] and food.get("freshness") == "长保")
+            status, _ = call("PATCH", path, {"fields": {"freshness": ""}})
+            read_status, food = call("GET", path)
+            check("清空新鲜度", status == 200 and read_status == 200 and food.get("freshness") == "")
             status, _ = call("PATCH", path, {"fields": {"preference": 60}})
             check("非法偏好拒绝", status == 400)
+            status, _ = call("PATCH", path, {"fields": {"freshness": "隔夜"}})
+            check("非法新鲜度拒绝", status == 400)
         status, _ = call("GET", "/api/tracks/days")
         check("轨迹日期可达", status == 200)
     except Exception as error:

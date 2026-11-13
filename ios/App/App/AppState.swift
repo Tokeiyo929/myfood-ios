@@ -84,6 +84,23 @@ final class AppConfig {
     }
 }
 
+// 货架新鲜度分类：四选一、可清空（空串=未选择）。值与 worker CONFIG.freshness 对齐。
+enum FoodFreshness: String, CaseIterable, Identifiable {
+    case daily = "日清"
+    case shortShelf = "短保"
+    case frozenToFresh = "冻转鲜"
+    case longShelf = "长保"
+
+    var id: String { rawValue }
+    var label: String { rawValue }
+
+    // 历史/异常值不显示为已选项；保存时按空值清空
+    static func normalize(_ value: Any?) -> String {
+        guard let s = value as? String, let item = FoodFreshness(rawValue: s) else { return "" }
+        return item.rawValue
+    }
+}
+
 struct CommentDraft {
     var comments: [String] = []
     var editingIndex: Int?

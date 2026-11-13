@@ -46,6 +46,9 @@ class BackendTests(unittest.TestCase):
                 if fields.get("preference") == 60:
                     self.respond(400, {"error": "invalid preference"})
                     return
+                if fields.get("freshness") not in (None, "", "日清", "短保", "冻转鲜", "长保"):
+                    self.respond(400, {"error": "invalid freshness"})
+                    return
                 if "worth_it" in fields:
                     fields["worth_it"] = "yes" if fields["worth_it"] else "no"
                 state["food"].update(fields)

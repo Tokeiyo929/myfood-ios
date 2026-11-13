@@ -257,8 +257,20 @@ struct RecordCardView: View {
                     Text("材料：" + record.ingredientLabels.joined(separator: " "))
                         .font(.system(size: 12)).foregroundStyle(Theme.primary).lineLimit(1)
                 }
-                if record.repurchase > 0 {
-                    Text("复购\(record.repurchase)次").font(.system(size: 12)).foregroundStyle(.secondary)
+                if !record.freshness.isEmpty || record.repurchase > 0 {
+                    HStack(spacing: 6) {
+                        if !record.freshness.isEmpty {
+                            Text(record.freshness)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Theme.primary)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Theme.primary.opacity(0.12), in: Capsule())
+                                .accessibilityLabel("新鲜度 \(record.freshness)")
+                        }
+                        if record.repurchase > 0 {
+                            Text("复购\(record.repurchase)次").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Spacer(minLength: 0)
             }

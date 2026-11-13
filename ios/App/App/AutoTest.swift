@@ -91,6 +91,7 @@ enum AutoTest {
         OfflineStore.flushIO()
         await app.detail.loadAll()
         check(app.detail.loaded && app.detail.name == "测试记录 80", "详情按 id 加载记录")
+        check(app.detail.freshness == "日清", "详情加载新鲜度选项")
         check(DetailViewModel.prevRecordLabel(["2026-11-01", "2026-11-03"]) == "上次记录：2026-11-01", "上次记录标签")
         mark("详情断言后")
         try await modelRegression(check: check)
@@ -122,6 +123,16 @@ enum AutoTest {
         detail.editComment(0)
         detail.deleteComment(0)
         check(detail.editingCommentIndex == nil && detail.commentInput.isEmpty, "删除正在编辑的评论清空输入态")
+        detail.freshness = "长保"
+        detail.saveDetail()
+        try await waitUntil { !detail.saving }
+        saved = try await API.getFoodById(80)
+        check(saved["freshness"] as? String == "长保", "表单保存新鲜度")
+        detail.freshness = ""
+        detail.saveDetail()
+        try await waitUntil { !detail.saving }
+        saved = try await API.getFoodById(80)
+        check(saved["freshness"] as? String == "", "再次保存可清空非必填新鲜度")
 
         let image = await RemoteImageModel.shared.load(API.imageUrl("myfood/regression.png"))
         check(image != nil, "图片通过 fixture 会话加载和解码")

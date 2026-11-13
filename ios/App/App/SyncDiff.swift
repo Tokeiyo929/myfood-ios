@@ -49,7 +49,7 @@ enum SyncDiff {
 
     // 参与 diff 的记录字段；modify_at/repurchase 是服务端派生（复购计数）、id/client_key 是身份，不比较
     static let foodDiffFields = ["name", "brand_name", "price", "categories", "ingredients",
-                                 "flavors", "preference", "worth_it", "comment",
+                                 "flavors", "preference", "worth_it", "freshness", "comment",
                                  "category_rank", "image_path", "image_metadata"]
 
     // MARK: 静默拉取远端存暂存（git fetch）；失败静默，保持现有 diff 状态
@@ -137,6 +137,8 @@ enum SyncDiff {
         } else if out["worth_it"] == nil || out["worth_it"] is NSNull {
             out["worth_it"] = ""
         }
+        // freshness 是后加列：旧快照/旧缓存没有该 key，缺失按服务端默认空串归一，避免升级后全量误报"远端更新"
+        if out["freshness"] == nil || out["freshness"] is NSNull { out["freshness"] = "" }
         return out
     }
 
@@ -461,7 +463,7 @@ enum SyncDiff {
 
     static let fieldLabels = ["name": "名称", "brand_name": "品牌", "price": "价格", "categories": "类别",
                               "ingredients": "原料", "flavors": "味道", "preference": "偏好",
-                              "worth_it": "值不值", "comment": "评论", "category_rank": "排名",
+                              "worth_it": "值不值", "freshness": "新鲜度", "comment": "评论", "category_rank": "排名",
                               "image_path": "图片", "image_metadata": "图片信息"]
 
     static func display(_ v: Any) -> String {
@@ -494,7 +496,8 @@ enum SyncDiff {
     private static func snapshotFoods() -> [Int: [String: Any]] {
         var out: [Int: [String: Any]] = [:]
         for (k, v) in (snapshotRaw()["foods"] as? [String: Any]) ?? [:] {
-            if let id = Int(k), let rec = v as? [String: Any] { out[id] = rec }
+            // 旧快照可能缺后加字段：读取时归一，避免与带默认值的新远端永不等
+            if let id = Int(k), let rec = v as? [String: Any] { out[id] = normalizeFood(rec) }
         }
         return out
     }
