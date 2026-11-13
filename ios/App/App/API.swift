@@ -134,7 +134,9 @@ enum API {
 
     // MARK: - 摘抄
     static func getQuotes() async throws -> [String: Any] {
-        let r = try await request("/api/quotes")
+        // 服务端 created_at 存 UTC；tz 让展示时刻按本机时区推导（与轨迹同模型）
+        let tz = TimeZone.current.secondsFromGMT() / 60
+        let r = try await request("/api/quotes?tz=\(tz)")
         guard r["items"] is [[String: Any]] else { throw APIError(message: "摘抄列表格式无效") }
         return r
     }

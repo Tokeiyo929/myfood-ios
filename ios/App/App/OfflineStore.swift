@@ -261,6 +261,12 @@ enum OfflineStore {
         return f.string(from: Date())
     }
 
+    static func nowString() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.string(from: Date())
+    }
+
     static func isToday(_ record: [String: Any]) -> Bool {
         (record["modify_at"] as? [String])?.last == todayString()
     }
@@ -611,7 +617,7 @@ enum SyncEngine {
             if let localId = m.localId {
                 var updated = rec
                 updated["id"] = sid
-                updated["day"] = OfflineStore.todayString() // 创建即今天；下次整表拉取会用服务端时间
+                updated["day"] = OfflineStore.nowString() // 创建时刻到分钟；下次整表拉取会用服务端时间
                 OfflineStore.removeQuote(id: localId)
                 OfflineStore.upsertQuote(updated)
                 SyncDiff.snapshotUpsertQuote(updated)

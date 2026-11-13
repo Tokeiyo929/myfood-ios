@@ -49,7 +49,7 @@ final class QuotesViewModel {
             do {
                 let res = try await API.createQuote(text: text, note: "", clientKey: clientKey)
                 let id = res["id"] as! Int
-                OfflineStore.upsertQuote(["id": id, "text": text, "note": "", "day": OfflineStore.todayString()])
+                OfflineStore.upsertQuote(["id": id, "text": text, "note": "", "day": OfflineStore.nowString()])
                 SyncDiff.snapshotUpsertQuote(["id": id, "text": text, "note": ""]) // 防误报"远端新增摘抄"
                 SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "synced")
                 input = ""
@@ -63,7 +63,7 @@ final class QuotesViewModel {
                 }
                 // 断网摘抄：本地负数 id 记录 + 入队，恢复联网自动上传
                 let localId = OfflineStore.allocateLocalQuoteId()
-                OfflineStore.upsertQuote(["id": localId, "text": text, "note": "", "day": OfflineStore.todayString(), "client_key": clientKey])
+                OfflineStore.upsertQuote(["id": localId, "text": text, "note": "", "day": OfflineStore.nowString(), "client_key": clientKey])
                 let payload: [String: Any] = ["text": text, "note": "", "client_key": clientKey]
                 let uuid = OfflineStore.enqueue(.quoteCreate(record: payload, clientKey: clientKey, localId: localId))
                 SyncLog.append(kind: "quoteCreate", target: String(text.prefix(12)), status: "pending", linkUUID: uuid)
