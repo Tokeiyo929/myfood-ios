@@ -528,6 +528,26 @@ enum CoreRegression {
                && OfflineStore.record(id: 9)?["comment"] as? [String] == ["远端还在改"],
                "采用远端版本：恢复被本地删除的记录")
 
+        // 本地与远端同改 → 用本地版本：远端变化并入快照基线，冲突清空、改动留在队列真实推送
+        // （回归：曾因基线未并入远端，recompute 永远再报同一条冲突，"用本地版本"形同虚设）
+        if var rec10 = OfflineStore.record(id: 10) { rec10["comment"] = ["本地优先"]; OfflineStore.upsertRecord(rec10) }
+        OfflineStore.enqueue(.patch(serverId: 10, fields: ["comment": ["本地优先"]]))
+        if let i = TestFixture.foods.firstIndex(where: { $0["id"] as? Int == 10 }) {
+            TestFixture.foods[i]["comment"] = ["远端优先"]
+        }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        state = SyncDiff.compute()
+        report(state.conflicts.count == 1 && state.conflicts[0].id == 10, "本地与远端同改再次产生冲突")
+        SyncDiff.resolve(state.conflicts[0], choice: .local)
+        state = SyncDiff.compute()
+        report(state.conflicts.isEmpty && state.pendingCount == 1
+               && (OfflineStore.record(id: 10)?["comment"] as? [String]) == ["本地优先"],
+               "用本地版本：冲突清空、本地改动保留待推")
+        try await SyncEngine.drain()
+        let pushed10 = try await API.getFoodById(10)
+        report((pushed10["comment"] as? [String]) == ["本地优先"] && OfflineStore.pendingCount() == 0,
+               "用本地版本解决后改动真实推到远端")
+
         // 恢复 fixture 与缓存基线
         TestFixture.foods = diffFoodsBackup
         OfflineStore.wipeAll()

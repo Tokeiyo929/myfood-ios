@@ -146,6 +146,13 @@ enum AutoTest {
         ocr.touchMoved(2)
         ocr.touchEnded()
         check(ocr.builtText == "美记", "OCR 从已选字起拖连续取消")
+        ocr.toggle(2)
+        check(ocr.builtText == "美日记", "OCR 轻点补选单字")
+        ocr.toggle(2)
+        check(ocr.builtText == "美记", "OCR 轻点再点取消")
+        ocr.toggle(2)
+        ocr.apply() // onApply 未挂也不影响清选区
+        check(ocr.picked.isEmpty, "OCR 添加后自动清选区，下次不重复带上")
 
         let geometry = FoodMapViewModel()
         geometry.magnify(1.1)

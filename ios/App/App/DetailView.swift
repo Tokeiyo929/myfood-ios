@@ -151,7 +151,12 @@ final class DetailViewModel {
 
     private func num(_ v: Any?) -> String {
         guard let n = v as? NSNumber else { return "" }
-        return n.stringValue
+        // 价格至多两位小数：抹掉二进制浮点长尾（9.79 可能显示成 9.7899999999999991）
+        let rounded = (n.doubleValue * 100).rounded() / 100
+        let s = String(format: "%.2f", rounded)
+        if s.hasSuffix(".00") { return String(s.dropLast(3)) }
+        if s.hasSuffix("0") { return String(s.dropLast(1)) }
+        return s
     }
 
     // 可测：worker 存的是 "yes"/"no" 字符串，兼容历史 bool/NSNumber
@@ -273,13 +278,14 @@ final class DetailViewModel {
         if !o.isEmpty || !dsc.isEmpty {
             var orig: Any = NSNull()
             var disc: Any = NSNull()
+            // 字符串上行：worker Number() 归一，杜绝 Double 过 JSONSerialization 的二进制长尾
             if !o.isEmpty {
                 guard let ov = Double(o), ov.isFinite, ov >= 0 else { toast = "价格无效"; return }
-                orig = NSNumber(value: ov)
+                orig = o
             }
             if !dsc.isEmpty {
                 guard let dv = Double(dsc), dv.isFinite, dv >= 0 else { toast = "价格无效"; return }
-                disc = NSNumber(value: dv)
+                disc = dsc
             }
             price = [orig, disc]
         }
@@ -391,7 +397,8 @@ final class DetailViewModel {
         loaded = false
         recordId = 0
         refreshDependents()
-        AppModel.shared.historyPath.removeAll()
+        // 确认弹窗的收起事务和 navigation pop 不能同帧执行（撞车闪退）：弹窗走完，下一拍再 pop
+        DispatchQueue.main.async { AppModel.shared.historyPath.removeAll() }
     }
 
     private func refreshDependents() {
@@ -640,6 +647,13 @@ final class OCRViewModel {
         case 1: onApplyBrand?(text)
         default: onApplyIngredient?(text)
         }
+        picked.removeAll() // 添加后清选区：下次划选不重复带上旧字
+    }
+
+    // 轻点单格：切换选中（与按住划选区分）
+    func toggle(_ idx: Int) {
+        guard chars.indices.contains(idx) else { return }
+        if picked.contains(idx) { picked.remove(idx) } else { picked.insert(idx) }
     }
 }
 
@@ -711,26 +725,27 @@ struct DetailView: View {
     private var stripSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(app.detail.stripRecords.indices, id: \.self) { ridx in
-                    let rec = app.detail.stripRecords[ridx]
-                    let id = rec["id"] as? Int ?? 0
-                    VStack(spacing: 3) {
-                        RemoteImage(path: rec["image_path"] as? String)
-                            .frame(width: 96, height: 96)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(id == app.detail.recordId ? Theme.primary : .clear, lineWidth: 2)
-                            )
-                        Text((rec["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "未命名")
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                            .frame(width: 96)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture { app.detail.selectRecord(id) }
-                    .contextMenu {
-                        Button("从相册选择") { app.detail.cameraMode = .replace; app.detail.showingPhotoPicker = true }
-                        Button("拍照") { app.detail.cameraMode = .replace; app.detail.showingCamera = true }
+                // 用记录 id 做身份 + first(where:) 取值：删除瞬间数组收缩时索引 ForEach 越界闪退
+                ForEach(app.detail.stripRecords.compactMap { $0["id"] as? Int }, id: \.self) { rid in
+                    if let rec = app.detail.stripRecords.first(where: { ($0["id"] as? Int) == rid }) {
+                        VStack(spacing: 3) {
+                            RemoteImage(path: rec["image_path"] as? String)
+                                .frame(width: 96, height: 96)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(rid == app.detail.recordId ? Theme.primary : .clear, lineWidth: 2)
+                                )
+                            Text((rec["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "未命名")
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                                .frame(width: 96)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { app.detail.selectRecord(rid) }
+                        .contextMenu {
+                            Button("从相册选择") { app.detail.cameraMode = .replace; app.detail.showingPhotoPicker = true }
+                            Button("拍照") { app.detail.cameraMode = .replace; app.detail.showingCamera = true }
+                        }
                     }
                 }
             }
@@ -977,6 +992,7 @@ struct OCRPanelView: View {
     let ocr: OCRViewModel
     var onClose: () -> Void
     @State private var lastHit: Int?
+    @State private var stroking = false
 
     var body: some View {
         GeometryReader { geo in
@@ -1024,38 +1040,58 @@ struct OCRPanelView: View {
         .task { await ocr.recognize() }
     }
 
-    // 字格网格：拖动划选（触摸点 → 格子序号），点按切换单字
+    // 字格网格：轻点切换单字；按住 0.2s 进入连续划选（对齐轮盘防误触）；字多时面板内滚动
     private var charGrid: some View {
         GeometryReader { geo in
             let columns = 8
             let spacing: CGFloat = 4
             let cellW = (geo.size.width - CGFloat(columns - 1) * spacing) / CGFloat(columns)
             let cellH = cellW + 8
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: columns), spacing: spacing) {
-                ForEach(ocr.chars.indices, id: \.self) { idx in
-                    Text(ocr.chars[idx])
-                        .font(.system(size: 17))
-                        .frame(width: cellW, height: cellH)
-                        .background(ocr.picked.contains(idx) ? Theme.primary.opacity(0.25) : Color.white, in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.85)))
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { g in
-                        let idx = hitIndex(location: g.location, width: geo.size.width, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count)
-                        guard let idx else { return }
-                        if lastHit == nil {
-                            ocr.touchStarted(idx)
-                            lastHit = idx
-                        } else if idx != lastHit {
-                            ocr.touchMoved(idx)
-                            lastHit = idx
-                        }
+            let rows = (ocr.chars.count + columns - 1) / columns
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: columns), spacing: spacing) {
+                    ForEach(ocr.chars.indices, id: \.self) { idx in
+                        Text(ocr.chars[idx])
+                            .font(.system(size: 17))
+                            .frame(width: cellW, height: cellH)
+                            .background(ocr.picked.contains(idx) ? Theme.primary.opacity(0.25) : Color.white, in: RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.85)))
                     }
-                    .onEnded { _ in ocr.touchEnded(); lastHit = nil }
-            )
+                }
+                .contentShape(Rectangle())
+                // 手势挂在网格内容上：坐标系随滚动走，划选命中才不会算错行
+                .gesture(
+                    SpatialTapGesture()
+                        .onEnded { g in
+                            if let idx = hitIndex(location: g.location, width: geo.size.width, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count) {
+                                ocr.toggle(idx)
+                            }
+                        }
+                )
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.2)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
+                        .onChanged { value in
+                            guard case let .second(_, drag?) = value else { return }
+                            let idx = hitIndex(location: drag.location, width: geo.size.width, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count)
+                            if !stroking {
+                                stroking = true
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                if let idx { ocr.touchStarted(idx); lastHit = idx }
+                            } else if let idx, idx != lastHit {
+                                ocr.touchMoved(idx)
+                                lastHit = idx
+                            }
+                        }
+                        .onEnded { _ in
+                            if stroking { ocr.touchEnded() }
+                            stroking = false
+                            lastHit = nil
+                        }
+                )
+            }
+            .frame(height: min(CGFloat(max(rows, 1)) * (cellH + spacing), geo.size.height))
+            .scrollDisabled(stroking) // 划选中锁滚动：触摸点在内容坐标系里才稳定
         }
     }
 

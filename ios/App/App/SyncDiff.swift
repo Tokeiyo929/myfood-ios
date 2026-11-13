@@ -372,7 +372,14 @@ enum SyncDiff {
             SyncLog.append(kind: "conflict", target: conflict.name,
                            detail: remoteGone ? "采用远端版本（接受删除）" : "采用远端版本", status: "synced")
         case .local:
-            // 本地改动保留、队列照常推送；远端已删时把本地修改转为重建（create，原图不保证仍在，不带图）
+            // 本地改动保留、队列照常推送；远端变化并入快照基线（git merge 语义）——
+            // 否则下轮 compute 仍判"远端有变化∩本地有改动"，冲突永远清不掉，"用本地版本"形同虚设
+            if let remote {
+                snapshotUpsertFood(remote)
+            } else {
+                snapshotRemoveFood(id: conflict.id)
+            }
+            // 远端已删时把本地修改转为重建（create，原图不保证仍在，不带图）
             if remoteGone {
                 for m in targets {
                     OfflineStore.removeMutation(uuid: m.uuid)
