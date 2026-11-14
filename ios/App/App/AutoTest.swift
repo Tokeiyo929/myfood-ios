@@ -154,6 +154,9 @@ enum AutoTest {
         ocr.apply() // onApply 未挂也不影响清选区
         check(ocr.picked.isEmpty, "OCR 添加后自动清选区，下次不重复带上")
 
+        let decorated = RecordDecorator.decorate(["flavors": [["name": "酸", "level": 40], ["name": "辣", "level": 97], ["name": "甜", "level": 50]]])
+        check(decorated.flavorLabels == ["太辣", "微酸"], "味道标签按分数降序（97 太辣在 40 微酸前），50 默认不显示")
+
         let geometry = FoodMapViewModel()
         geometry.magnify(1.1)
         geometry.magnify(1.2)

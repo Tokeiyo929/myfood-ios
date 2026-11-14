@@ -49,10 +49,13 @@ enum RecordDecorator {
             else { d.prefKind = .good }
         }
         if let cfg = AppConfig.shared, let fl = record["flavors"] as? [[String: Any]] {
-            d.flavorLabels = fl.compactMap { f -> String? in
+            // 按分数降序展示（97 的太辣排在 40 的微酸前），50=默认值照旧不显示
+            d.flavorLabels = fl.compactMap { f -> (level: Int, label: String)? in
                 guard let name = f["name"] as? String, let level = f["level"] as? Int, level != cfg.flavorScale["default"] else { return nil }
-                return cfg.flavorLabel(name, level: level)
+                return (level, cfg.flavorLabel(name, level: level))
             }
+            .sorted { $0.level > $1.level }
+            .map { $0.label }
         }
         if let ing = record["ingredients"] as? [[String: Any]] {
             d.ingredientLabels = ing.compactMap { i -> String? in
