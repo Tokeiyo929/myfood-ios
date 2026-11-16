@@ -972,12 +972,6 @@ struct OCRPanelView: View {
         VStack(spacing: 10) {
             header
             targetChips
-            // 原图缩略预览：只做参照，不做图上叠层选择
-            Image(uiImage: ocr.uprightImage())
-                .resizable()
-                .scaledToFit()
-                .frame(maxHeight: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             Text(ocr.statusText).font(.system(size: 12)).foregroundStyle(.secondary)
             // 识别结果文本块：长按选词、拖柄扩选、系统编辑菜单
             SelectableTextView(text: ocr.text, onSelectionChange: { ocr.selectionText = $0 })
