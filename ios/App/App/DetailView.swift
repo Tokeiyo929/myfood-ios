@@ -1,7 +1,6 @@
 import SwiftUI
 import PhotosUI
 import Vision
-import VisionKit
 import UIKit
 
 // 详情页（原 UIKit DetailViewController + OcrViewController 移植）：
@@ -560,32 +559,24 @@ final class DetailViewModel {
 @Observable
 final class OCRViewModel {
     let image: UIImage
-    var chars: [String] = []
-    var picked: Set<Int> = []
+    var text = "" // 识别出的全文（按行拼接）
     var target = 0 // 0 产品名 1 品牌 2 原料
     var recognized = false
     var statusText = "识别中…"
-    var selectionText = "" // Live Text 当前选区（图片叠层选择）
+    var selectionText = "" // 文本块当前选区
     var onApplyName: ((String) -> Void)?
     var onApplyBrand: ((String) -> Void)?
     var onApplyIngredient: ((String) -> Void)?
-    private var strokeMode: Bool?
-    private var lastHit: Int?
     private var upright: UIImage?
 
-    var builtText: String {
-        chars.enumerated().filter { picked.contains($0.offset) }.map { $0.element }.joined()
-    }
-    // Live Text 可用性（A12 及以后芯片）；不可用时面板回落到字符网格
-    var liveTextAvailable: Bool { ImageAnalyzer.isSupported }
     static let targetNames = ["产品名", "品牌", "原料"]
 
     init(image: UIImage) {
         self.image = image
     }
 
-    // 烘焙方向：EXIF 的旋转不落在像素里，Vision/VisionKit 都按直立图取字
-    // scale=1：像素原样出图，否则屏幕 scale 会 elongation 到 3 倍边长（4000px 照片变 12000px，内存和识别都吃亏）
+    // 烘焙方向：EXIF 的旋转不落在像素里，Vision 按直立图取字
+    // scale=1：像素原样出图，否则屏幕 scale 会把 4000px 照片放成 12000px
     func uprightImage() -> UIImage {
         if let upright { return upright }
         let format = UIGraphicsImageRendererFormat.default()
@@ -599,19 +590,9 @@ final class OCRViewModel {
     }
 
     func recognize() async {
-        if liveTextAvailable {
-            // Live Text 主路径：分析完成由面板回调 markAnalysis；无需再跑逐字识别
-            statusText = "双击文字选中，拖两端手柄扩选"
-            return
-        }
-        await fallbackRecognize()
-    }
-
-    // 逐字识别兜底：无 Live Text 机型，或图片分析没拿到字时（至少知道有没有字）
-    private func fallbackRecognize() async {
         let baked = uprightImage()
         guard let cg = baked.cgImage else { finishRecognition([]); return }
-        let texts = await Task.detached(priority: .userInitiated) {
+        let lines = await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.recognitionLanguages = ["zh-Hans"]
@@ -621,73 +602,22 @@ final class OCRViewModel {
             catch { return [String]() }
             return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
         }.value
-        finishRecognition(texts)
+        finishRecognition(lines)
     }
 
-    // Live Text 分析结束：有字才放行冒烟等待；无字退回逐字识别再判一次
-    func markAnalysis(_ hasText: Bool) {
-        if hasText {
-            recognized = true
-            statusText = "双击文字选中，拖两端手柄扩选"
-        } else {
-            Task { await fallbackRecognize() }
-        }
-    }
-
-    private func finishRecognition(_ texts: [String]) {
-        var items: [String] = []
-        for t in texts { for ch in t { items.append(String(ch)) } }
-        guard !items.isEmpty else {
-            statusText = "未识别到文字"
+    private func finishRecognition(_ lines: [String]) {
+        let joined = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "
+")
+        guard !joined.isEmpty else {
+            statusText = "未识别到文字，换张清晰的图试试"
             return
         }
-        chars = items
+        text = joined
         recognized = true
-        statusText = "共\(items.count)个字，按住划选"
+        statusText = "长按选中文字，拖两端手柄扩选"
     }
 
-    // 划选：起点定 on，滑过区域连续选中（移植 ocrTouchStart/Move/End 的 line continuity）
-    func touchStarted(_ idx: Int) {
-        let selecting = !picked.contains(idx)
-        strokeMode = selecting
-        lastHit = idx
-        setHit(idx, on: selecting)
-    }
-
-    func touchMoved(_ idx: Int) {
-        guard let mode = strokeMode else { return }
-        if let last = lastHit {
-            let lo = min(last, idx), hi = max(last, idx)
-            for i in lo...hi { setHit(i, on: mode) }
-        } else {
-            setHit(idx, on: mode)
-        }
-        lastHit = idx
-    }
-
-    func touchEnded() {
-        strokeMode = nil
-        lastHit = nil
-    }
-
-    private func setHit(_ idx: Int, on: Bool) {
-        guard chars.indices.contains(idx) else { return }
-        if on { picked.insert(idx) }
-        else { picked.remove(idx) }
-    }
-
-    func apply() {
-        let text = builtText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        switch target {
-        case 0: onApplyName?(text)
-        case 1: onApplyBrand?(text)
-        default: onApplyIngredient?(text)
-        }
-        picked.removeAll() // 添加后清选区：下次划选不重复带上旧字
-    }
-
-    // Live Text 选区填入目标（产品名/品牌替换，原料追加）；选区保留，方便连选多个原料
+    // 选区填入目标（产品名/品牌替换，原料追加）；选区保留，方便连选多个原料
     func applySelection(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -699,14 +629,7 @@ final class OCRViewModel {
     }
 
     func clearSelection() {
-        picked.removeAll()
         selectionText = ""
-    }
-
-    // 轻点单格：切换选中（与按住划选区分）
-    func toggle(_ idx: Int) {
-        guard chars.indices.contains(idx) else { return }
-        if picked.contains(idx) { picked.remove(idx) } else { picked.insert(idx) }
     }
 }
 
@@ -1044,34 +967,24 @@ struct DetailView: View {
 struct OCRPanelView: View {
     let ocr: OCRViewModel
     var onClose: () -> Void
-    @State private var lastHit: Int?
-    @State private var stroking = false
 
     var body: some View {
-        Group {
-            if ocr.liveTextAvailable {
-                liveTextBody
-            } else {
-                gridBody
-            }
-        }
-        .task { await ocr.recognize() }
-    }
-
-    // 主路径（对齐主流 OCR 做法）：图片铺满，文字直接叠在图上——双击选词、拖两端手柄扩选
-    private var liveTextBody: some View {
         VStack(spacing: 10) {
-            header(applyOnDone: true)
+            header
             targetChips
-            OCRLiveTextView(
-                image: ocr.uprightImage(),
-                onSelectionChange: { ocr.selectionText = $0 },
-                onAnalyzed: { ocr.markAnalysis($0) }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 原图缩略预览：只做参照，不做图上叠层选择
+            Image(uiImage: ocr.uprightImage())
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             Text(ocr.statusText).font(.system(size: 12)).foregroundStyle(.secondary)
-            Text("已选：\(ocr.selectionText.isEmpty ? "（双击图上文字选中）" : ocr.selectionText)")
+            // 识别结果文本块：长按选词、拖柄扩选、系统编辑菜单
+            SelectableTextView(text: ocr.text, onSelectionChange: { ocr.selectionText = $0 })
+                .background(Color(white: 0.97), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 0.88)))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            Text("已选：\(ocr.selectionText.isEmpty ? "（长按文字选中）" : ocr.selectionText)")
                 .font(.system(size: 14)).foregroundStyle(Theme.primary)
                 .lineLimit(2)
             HStack {
@@ -1095,45 +1008,15 @@ struct OCRPanelView: View {
         .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task { await ocr.recognize() }
     }
 
-    // 兜底路径（无 Live Text 的旧机型）：识别成字符网格，轻点切换/按住 0.2s 划选
-    private var gridBody: some View {
-        VStack(spacing: 10) {
-            header(applyOnDone: false)
-            targetChips
-            Text(ocr.statusText).font(.system(size: 12)).foregroundStyle(.secondary)
-            Text("已选：\(ocr.builtText.isEmpty ? "（空）" : ocr.builtText)")
-                .font(.system(size: 14)).foregroundStyle(Theme.primary)
-            HStack {
-                Spacer()
-                Button("＋添加") { ocr.apply() }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .background(Theme.primary, in: Capsule())
-                Button("清空") { ocr.clearSelection() }
-                    .font(.system(size: 13))
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .overlay(Capsule().stroke(Color.red.opacity(0.5)))
-            }
-            charGrid
-        }
-        .padding(14)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private func header(applyOnDone: Bool) -> some View {
+    private var header: some View {
         HStack {
-            Text("在图上点选文字").font(.system(size: 16, weight: .bold))
+            Text("识别结果").font(.system(size: 16, weight: .bold))
             Spacer()
             Button("完成") {
-                if applyOnDone { ocr.applySelection(ocr.selectionText) } else { ocr.apply() }
+                ocr.applySelection(ocr.selectionText)
                 onClose()
             }
             .font(.system(size: 15, weight: .bold))
@@ -1152,69 +1035,6 @@ struct OCRPanelView: View {
             }
             Spacer()
         }
-    }
-
-    // 字格网格：轻点切换单字；按住 0.2s 进入连续划选（对齐轮盘防误触）；字多时面板内滚动
-    // 不用 GeometryReader 占位：它纵向贪吃满屏，卡片下方会留大片空白；宽度直接按屏宽扣边距推
-    private var charGrid: some View {
-        let columns = 8
-        let spacing: CGFloat = 4
-        let inner = UIScreen.main.bounds.width - 32 - 28 // cover 左右 16×2 + 白卡左右 14×2
-        let cellW = (inner - CGFloat(columns - 1) * spacing) / CGFloat(columns)
-        let cellH = cellW + 8
-        let rows = (ocr.chars.count + columns - 1) / columns
-        return ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellW), spacing: spacing), count: columns), spacing: spacing) {
-                ForEach(ocr.chars.indices, id: \.self) { idx in
-                    Text(ocr.chars[idx])
-                        .font(.system(size: 17))
-                        .frame(width: cellW, height: cellH)
-                        .background(ocr.picked.contains(idx) ? Theme.primary.opacity(0.25) : Color.white, in: RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.85)))
-                }
-            }
-            .contentShape(Rectangle())
-            // 手势挂在网格内容上：坐标系随滚动走，划选命中才不会算错行
-            .gesture(
-                SpatialTapGesture()
-                    .onEnded { g in
-                        if let idx = hitIndex(location: g.location, width: inner, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count) {
-                            ocr.toggle(idx)
-                        }
-                    }
-            )
-            .gesture(
-                LongPressGesture(minimumDuration: 0.2)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .onChanged { value in
-                        guard case let .second(_, drag?) = value else { return }
-                        let idx = hitIndex(location: drag.location, width: inner, columns: columns, cellW: cellW, cellH: cellH, spacing: spacing, count: ocr.chars.count)
-                        if !stroking {
-                            stroking = true
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            if let idx { ocr.touchStarted(idx); lastHit = idx }
-                        } else if let idx, idx != lastHit {
-                            ocr.touchMoved(idx)
-                            lastHit = idx
-                        }
-                    }
-                    .onEnded { _ in
-                        if stroking { ocr.touchEnded() }
-                        stroking = false
-                        lastHit = nil
-                    }
-            )
-        }
-        .frame(height: min(CGFloat(max(rows, 1)) * (cellH + spacing), 320))
-        .scrollDisabled(stroking) // 划选中锁滚动：触摸点在内容坐标系里才稳定
-    }
-
-    private func hitIndex(location: CGPoint, width: CGFloat, columns: Int, cellW: CGFloat, cellH: CGFloat, spacing: CGFloat, count: Int) -> Int? {
-        let col = Int(location.x / (cellW + spacing))
-        let row = Int(location.y / (cellH + spacing))
-        guard col >= 0, col < columns, row >= 0 else { return nil }
-        let idx = row * columns + col
-        return idx < count ? idx : nil
     }
 }
 

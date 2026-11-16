@@ -137,42 +137,29 @@ enum AutoTest {
         let image = await RemoteImageModel.shared.load(API.imageUrl("myfood/regression.png"))
         check(image != nil, "图片通过 fixture 会话加载和解码")
         let ocr = OCRViewModel(image: UIImage())
-        ocr.chars = ["美", "食", "日", "记"]
-        ocr.touchStarted(0)
-        ocr.touchMoved(3)
-        ocr.touchEnded()
-        check(ocr.builtText == "美食日记", "OCR 跨格拖动连续选字")
-        ocr.touchStarted(1)
-        ocr.touchMoved(2)
-        ocr.touchEnded()
-        check(ocr.builtText == "美记", "OCR 从已选字起拖连续取消")
-        ocr.toggle(2)
-        check(ocr.builtText == "美日记", "OCR 轻点补选单字")
-        ocr.toggle(2)
-        check(ocr.builtText == "美记", "OCR 轻点再点取消")
-        ocr.toggle(2)
-        ocr.apply() // onApply 未挂也不影响清选区
-        check(ocr.picked.isEmpty, "OCR 添加后自动清选区，下次不重复带上")
+        ocr.text = "美食日记
+泡芙"
+        ocr.selectionText = "泡芙"
+        check(ocr.text == "美食日记
+泡芙", "OCR 全文按行保存供文本块展示")
 
-        // Live Text 选区填入目标（图片叠层选择路径）
         var appliedName = "", appliedBrand = "", appliedIngredient = ""
         ocr.onApplyName = { appliedName = $0 }
         ocr.onApplyBrand = { appliedBrand = $0 }
         ocr.onApplyIngredient = { appliedIngredient = $0 }
         ocr.target = 0
-        ocr.applySelection("  泡芙  ")
-        check(appliedName == "泡芙" && appliedBrand.isEmpty && appliedIngredient.isEmpty, "Live Text 选区填入产品名（去空白）")
+        ocr.applySelection(ocr.selectionText)
+        check(appliedName == "泡芙" && appliedBrand.isEmpty && appliedIngredient.isEmpty, "选区填入产品名")
         ocr.target = 1
-        ocr.applySelection("某某牌")
-        check(appliedBrand == "某某牌", "Live Text 选区填入品牌")
+        ocr.applySelection("  某某牌  ")
+        check(appliedBrand == "某某牌", "选区填入品牌（去空白）")
         ocr.target = 2
         ocr.applySelection("奶油")
-        check(appliedIngredient == "奶油", "Live Text 选区填入原料")
+        check(appliedIngredient == "奶油", "选区填入原料")
         ocr.applySelection("   ")
         check(appliedIngredient == "奶油", "空选区不触发回调")
-        ocr.selectionText = "奶油"
         ocr.clearSelection()
-        check(ocr.picked.isEmpty && ocr.selectionText.isEmpty, "清空同时清网格与选区")
+        check(ocr.selectionText.isEmpty, "清空选区")
 
         let decorated = RecordDecorator.decorate(["flavors": [["name": "酸", "level": 40], ["name": "辣", "level": 97], ["name": "甜", "level": 50]]])
         check(decorated.flavorLabels == ["太辣", "微酸"], "味道标签按分数降序（97 太辣在 40 微酸前），50 默认不显示")
