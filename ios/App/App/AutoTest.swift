@@ -137,11 +137,9 @@ enum AutoTest {
         let image = await RemoteImageModel.shared.load(API.imageUrl("myfood/regression.png"))
         check(image != nil, "图片通过 fixture 会话加载和解码")
         let ocr = OCRViewModel(image: UIImage())
-        ocr.text = "美食日记
-泡芙"
+        ocr.text = "美食日记\n泡芙"
         ocr.selectionText = "泡芙"
-        check(ocr.text == "美食日记
-泡芙", "OCR 全文按行保存供文本块展示")
+        check(ocr.text == "美食日记\n泡芙", "OCR 全文按行保存供文本块展示")
 
         var appliedName = "", appliedBrand = "", appliedIngredient = ""
         ocr.onApplyName = { appliedName = $0 }

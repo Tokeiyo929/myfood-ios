@@ -606,8 +606,7 @@ final class OCRViewModel {
     }
 
     private func finishRecognition(_ lines: [String]) {
-        let joined = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "
-")
+        let joined = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: "\n")
         guard !joined.isEmpty else {
             statusText = "未识别到文字，换张清晰的图试试"
             return
