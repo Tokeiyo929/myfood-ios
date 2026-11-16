@@ -154,6 +154,26 @@ enum AutoTest {
         ocr.apply() // onApply 未挂也不影响清选区
         check(ocr.picked.isEmpty, "OCR 添加后自动清选区，下次不重复带上")
 
+        // Live Text 选区填入目标（图片叠层选择路径）
+        var appliedName = "", appliedBrand = "", appliedIngredient = ""
+        ocr.onApplyName = { appliedName = $0 }
+        ocr.onApplyBrand = { appliedBrand = $0 }
+        ocr.onApplyIngredient = { appliedIngredient = $0 }
+        ocr.target = 0
+        ocr.applySelection("  泡芙  ")
+        check(appliedName == "泡芙" && appliedBrand.isEmpty && appliedIngredient.isEmpty, "Live Text 选区填入产品名（去空白）")
+        ocr.target = 1
+        ocr.applySelection("某某牌")
+        check(appliedBrand == "某某牌", "Live Text 选区填入品牌")
+        ocr.target = 2
+        ocr.applySelection("奶油")
+        check(appliedIngredient == "奶油", "Live Text 选区填入原料")
+        ocr.applySelection("   ")
+        check(appliedIngredient == "奶油", "空选区不触发回调")
+        ocr.selectionText = "奶油"
+        ocr.clearSelection()
+        check(ocr.picked.isEmpty && ocr.selectionText.isEmpty, "清空同时清网格与选区")
+
         let decorated = RecordDecorator.decorate(["flavors": [["name": "酸", "level": 40], ["name": "辣", "level": 97], ["name": "甜", "level": 50]]])
         check(decorated.flavorLabels == ["太辣", "微酸"], "味道标签按分数降序（97 太辣在 40 微酸前），50 默认不显示")
 
