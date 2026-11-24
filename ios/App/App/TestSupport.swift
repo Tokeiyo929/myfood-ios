@@ -485,13 +485,20 @@ enum CoreRegression {
 
         // 远端删除：快照有、拉取没有 → ↓；与无关本地改动互不干扰，应用后本地缓存同步删除
         OfflineStore.enqueue(.patch(serverId: 6, fields: ["comment": ["本地新评论"]]))
-        TestFixture.foods.removeAll { $0["id"] as? Int == 7 }
-        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: diffQuotes)
+        TestFixture.foods.removeAll { $0["id"] as? Int == 7 || $0["id"] as? Int == 11 }
+        OfflineStore.mergeQuotes(diffQuotes)
+        let keptQuotes = diffQuotes.filter { $0["id"] as? Int == 503 }
+        SyncDiff.stashRemote(foods: try await API.getAllFoods(limit: 50), quotes: keptQuotes)
         state = SyncDiff.compute()
-        report(state.remoteDeletedIds == [7] && state.conflicts.isEmpty && state.pendingCount == 1,
+        report(Set(state.remoteDeletedIds) == [7, 11] && Set(state.remoteQuoteDeletedIds) == [501, 502]
+               && state.conflicts.isEmpty && state.pendingCount == 1,
                "远端删除被检测且不与无关本地改动混淆")
-        SyncDiff.applyRemoteChanges()
-        report(OfflineStore.record(id: 7) == nil, "远端删除应用到本地缓存")
+        let applied = SyncDiff.applyRemoteChanges()
+        OfflineStore.flushIO()
+        let storedFoods = OfflineStore.loadJSON(name: "records.json") as? [String: [String: Any]]
+        let storedQuotes = OfflineStore.loadJSON(name: "quotes.json") as? [[String: Any]]
+        report(applied == 4 && storedFoods?["7"] == nil && storedFoods?["11"] == nil && storedFoods?["6"] != nil
+               && storedQuotes?.compactMap { $0["id"] as? Int } == [503], "食品和摘抄批量删除落盘并保留其他记录")
 
         // 本地修改 + 远端已删 → 冲突；用本地转为重建（create 换新 client_key，不带图）
         if var rec8 = OfflineStore.record(id: 8) { rec8["comment"] = ["本地保存的评论"]; OfflineStore.upsertRecord(rec8) }
@@ -501,6 +508,8 @@ enum CoreRegression {
         state = SyncDiff.compute()
         report(state.conflicts.count == 1 && state.conflicts[0].id == 8 && state.conflicts[0].remoteKind == "已删除",
                "本地修改遇远端删除产生冲突")
+        SyncDiff.applyRemoteChanges()
+        report(OfflineStore.record(id: 8) != nil, "批量应用远端删除时保留冲突记录")
         SyncDiff.resolve(state.conflicts[0], choice: .local)
         let diffQueue = OfflineStore.pendingMutations()
         report(diffQueue.contains { $0.kind == "create" && $0.localId == 8 }

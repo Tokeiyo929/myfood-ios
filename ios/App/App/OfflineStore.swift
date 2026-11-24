@@ -211,11 +211,15 @@ enum OfflineStore {
         return records()[id]
     }
 
-    static func removeRecord(id: Int) {
+    static func removeRecord(id: Int) { removeRecords(ids: [id]) }
+
+    static func removeRecords(ids: Set<Int>) {
+        guard !ids.isEmpty else { return }
         lock.lock(); defer { lock.unlock() }
         var recs = records()
-        guard recs[id] != nil else { return }
-        recs[id] = nil
+        let originalCount = recs.count
+        for id in ids { recs.removeValue(forKey: id) }
+        guard recs.count != originalCount else { return }
         persistRecords(recs)
     }
 
@@ -455,9 +459,18 @@ enum OfflineStore {
         return quotes().first { ($0["id"] as? Int) == id }
     }
 
-    static func removeQuote(id: Int) {
+    static func removeQuote(id: Int) { removeQuotes(ids: [id]) }
+
+    static func removeQuotes(ids: Set<Int>) {
+        guard !ids.isEmpty else { return }
         lock.lock(); defer { lock.unlock() }
-        persistQuotes(quotes().filter { ($0["id"] as? Int) != id })
+        let all = quotes()
+        let kept = all.filter { quote in
+            guard let id = quote["id"] as? Int else { return true }
+            return !ids.contains(id)
+        }
+        guard kept.count != all.count else { return }
+        persistQuotes(kept)
     }
 
     static func cachedQuotes() -> [[String: Any]] {

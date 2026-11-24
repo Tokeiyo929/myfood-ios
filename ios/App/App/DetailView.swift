@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import Vision
 import UIKit
+import ImageIO
 
 // 详情页（原 UIKit DetailViewController + OcrViewController 移植）：
 // 图片横条（今日记录，点选切换/长按换图）+ 基本信息编辑 + 味道轮盘 + 偏好条
@@ -491,7 +492,7 @@ final class DetailViewModel {
         refreshDependents()
     }
 
-    // MARK: - OCR（Vision 端内识别 → 字格划选）
+    // MARK: - OCR 文本识别与选取
 
     func handlePickedItem(_ item: PhotosPickerItem?) {
         guard let item else { return }
@@ -558,7 +559,7 @@ final class DetailViewModel {
 @MainActor
 @Observable
 final class OCRViewModel {
-    let image: UIImage
+    private let image: UIImage
     var text = "" // 识别出的全文（按行拼接）
     var target = 0 // 0 产品名 1 品牌 2 原料
     var recognized = false
@@ -567,7 +568,6 @@ final class OCRViewModel {
     var onApplyName: ((String) -> Void)?
     var onApplyBrand: ((String) -> Void)?
     var onApplyIngredient: ((String) -> Void)?
-    private var upright: UIImage?
 
     static let targetNames = ["产品名", "品牌", "原料"]
 
@@ -575,29 +575,36 @@ final class OCRViewModel {
         self.image = image
     }
 
-    // 烘焙方向：EXIF 的旋转不落在像素里，Vision 按直立图取字
-    // scale=1：像素原样出图，否则屏幕 scale 会把 4000px 照片放成 12000px
-    func uprightImage() -> UIImage {
-        if let upright { return upright }
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        // 按像素尺寸出图（image.size 是点，scale>1 的源会丢像素）
-        let pixels = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
-        let renderer = UIGraphicsImageRenderer(size: pixels, format: format)
-        let baked = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: pixels)) }
-        upright = baked
-        return baked
+    // UIImage.Orientation 和 EXIF 的枚举值不同，按方向传给 Vision。
+    private var orientation: CGImagePropertyOrientation {
+        switch image.imageOrientation {
+        case .up: return .up
+        case .down: return .down
+        case .left: return .left
+        case .right: return .right
+        case .upMirrored: return .upMirrored
+        case .downMirrored: return .downMirrored
+        case .leftMirrored: return .leftMirrored
+        case .rightMirrored: return .rightMirrored
+        @unknown default: return .up
+        }
     }
 
     func recognize() async {
-        let baked = uprightImage()
-        guard let cg = baked.cgImage else { finishRecognition([]); return }
+        let handler: VNImageRequestHandler
+        if let cg = image.cgImage {
+            handler = VNImageRequestHandler(cgImage: cg, orientation: orientation, options: [:])
+        } else if let ci = image.ciImage {
+            handler = VNImageRequestHandler(ciImage: ci, orientation: orientation, options: [:])
+        } else {
+            finishRecognition([])
+            return
+        }
         let lines = await Task.detached(priority: .userInitiated) {
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = .accurate
             request.recognitionLanguages = ["zh-Hans"]
             request.usesLanguageCorrection = true
-            let handler = VNImageRequestHandler(cgImage: cg, options: [:])
             do { try handler.perform([request]) }
             catch { return [String]() }
             return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }

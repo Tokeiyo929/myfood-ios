@@ -9,6 +9,7 @@ final class FoodMapViewModel {
     var allFoods: [[String: Any]] = []
     var visitedDishes: Set<String> = []
     var byProvince: [String: [String]] = [:]
+    private(set) var visitedProvinces: Set<String> = []
     var statusText = "加载中…"
     var dataReady = false
     var needsRefresh = true
@@ -19,46 +20,12 @@ final class FoodMapViewModel {
     var rankCategory: String?
     var rankFoods: [[String: Any]] = []
     var toast: String?
-    var features: [FoodMapGeometry.ProvinceFeature] = []
     var panBase: CGSize = .zero
     private var pinchBase: CGFloat?
 
     var mapReady: Bool { dataReady }
 
-    func loadFeatures() { features = FoodMapGeometry.loadFeatures(region) }
-
-    // 投影 + 当前缩放/平移 → 视口坐标路径（Canvas 绘制与点选命中共用，不在绘制中改状态）
-    func renderedPaths(size: CGSize, features: [FoodMapGeometry.ProvinceFeature]) -> [(name: String, path: Path, visited: Bool)] {
-        guard !features.isEmpty else { return [] }
-        var minLon = Double.greatestFiniteMagnitude, maxLon = -Double.greatestFiniteMagnitude
-        var minLat = Double.greatestFiniteMagnitude, maxLat = -Double.greatestFiniteMagnitude
-        for f in features { for ring in f.rings { for p in ring {
-            minLon = min(minLon, Double(p.x)); maxLon = max(maxLon, Double(p.x))
-            minLat = min(minLat, Double(p.y)); maxLat = max(maxLat, Double(p.y))
-        } } }
-        let params = FoodMapGeometry.projectParams(vw: size.width, vh: size.height, minLon: minLon, maxLon: maxLon, minLat: minLat, maxLat: maxLat)
-        var out: [(name: String, path: Path, visited: Bool)] = []
-        let isEurope = region == "europe"
-        for f in features {
-            let prov = isEurope ? f.name : FoodMapGeometry.toFullName(f.name)
-            let dishes = byProvince[prov] ?? []
-            let isVisited = dishes.contains { visitedDishes.contains($0) }
-            var path = Path()
-            for ring in f.rings {
-                var first = true
-                for p in ring {
-                    let base = FoodMapGeometry.projectPoint(p, params: params)
-                    // 缩放围绕视口中心 + 平移
-                    let pt = CGPoint(x: size.width / 2 + (base.x - size.width / 2) * zoom + panOffset.width,
-                                     y: size.height / 2 + (base.y - size.height / 2) * zoom + panOffset.height)
-                    if first { path.move(to: pt); first = false } else { path.addLine(to: pt) }
-                }
-                path.closeSubpath()
-            }
-            out.append((f.name, path, isVisited))
-        }
-        return out
-    }
+    var geometry: FoodMapGeometry { region == "europe" ? .europe : .china }
 
     func onAppear() {
         guard needsRefresh else { return }
@@ -100,15 +67,18 @@ final class FoodMapViewModel {
             for c in (f["categories"] as? [String] ?? []) where !c.isEmpty { visited.insert(c) }
         }
         var byProv: [String: [String]] = [:]
+        var visitedProvs: Set<String> = []
         for item in catItems {
             guard let name = item["name"] as? String else { continue }
             let prov = (item["parentcategories"] as? String ?? "").trimmingCharacters(in: .whitespaces)
             guard !prov.isEmpty else { continue }
             byProv[prov, default: []].append(name)
+            if visited.contains(name) { visitedProvs.insert(prov) }
         }
         allFoods = foods
         visitedDishes = visited
         byProvince = byProv
+        visitedProvinces = visitedProvs
         statusText = offline ? "离线数据（可能不是最新）" : ""
         dataReady = true
     }
@@ -121,7 +91,6 @@ final class FoodMapViewModel {
         panOffset = .zero
         panBase = .zero
         selectedProvince = nil
-        loadFeatures()
     }
 
     func magnify(_ amount: CGFloat) {
@@ -188,8 +157,10 @@ final class FoodMapViewModel {
     }
 }
 
-// GeoJSON 几何与投影（纯逻辑，从 FoodMapViewController 移植；含 Provinces 文件读取）
-enum FoodMapGeometry {
+// 每个区域首次显示时构建居中、经度按纬度校正的路径，绘制与点选共用。
+struct FoodMapGeometry {
+    static let china = FoodMapGeometry(features: loadFeatures("china"))
+    static let europe = FoodMapGeometry(features: loadFeatures("europe"))
     static let provinceMap: [String: String] = [
         "北京": "北京市", "天津": "天津市", "上海": "上海市", "重庆": "重庆市",
         "内蒙古": "内蒙古自治区", "广西": "广西壮族自治区", "西藏": "西藏自治区", "宁夏": "宁夏回族自治区", "新疆": "新疆维吾尔自治区",
@@ -197,23 +168,40 @@ enum FoodMapGeometry {
     ]
     static func toFullName(_ name: String) -> String { provinceMap[name] ?? (name + "省") }
 
-    typealias Params = (k: Double, offsetX: Double, offsetY: Double, minLon: Double, maxLat: Double, cosLat: Double)
+    let paths: [(name: String, path: Path)]
+    private let extent: CGSize
 
-    // 投影参数：经度先乘 cos(midLat) 再 fit 视窗；水平/垂直居中（竖屏宽扁地图居中布局）
-    static func projectParams(vw: CGFloat, vh: CGFloat, minLon: Double, maxLon: Double, minLat: Double, maxLat: Double) -> Params {
-        let midLat = (minLat + maxLat) / 2
-        let cosLat = cos(midLat * .pi / 180)
-        let dLon = (maxLon - minLon) * cosLat
-        let dLat = maxLat - minLat
-        let k = min(Double(vw) / dLon, Double(vh) / dLat)
-        let offsetX = (Double(vw) - dLon * k) / 2
-        let offsetY = (Double(vh) - dLat * k) / 2
-        return (k, offsetX, offsetY, minLon, maxLat, cosLat)
+    init(features: [ProvinceFeature]) {
+        var bounds = CGRect.null
+        let outlines = features.map { feature in
+            var outline = Path()
+            for ring in feature.rings {
+                guard let first = ring.first else { continue }
+                outline.move(to: first)
+                for point in ring.dropFirst() { outline.addLine(to: point) }
+                outline.closeSubpath()
+            }
+            if !outline.isEmpty { bounds = bounds.union(outline.boundingRect) }
+            return (name: feature.name, path: outline)
+        }
+        guard !bounds.isNull else { paths = []; extent = .zero; return }
+        let cosLat = cos(bounds.midY * .pi / 180)
+        let projection = CGAffineTransform(a: cosLat, b: 0, c: 0, d: -1,
+                                           tx: -bounds.midX * cosLat, ty: bounds.midY)
+        extent = CGSize(width: bounds.width * cosLat, height: bounds.height)
+        paths = outlines.map { ($0.name, $0.path.applying(projection)) }
     }
 
-    static func projectPoint(_ lonlat: CGPoint, params: Params) -> CGPoint {
-        CGPoint(x: (Double(lonlat.x) - params.minLon) * params.cosLat * params.k + params.offsetX,
-                y: (params.maxLat - Double(lonlat.y)) * params.k + params.offsetY)
+    func viewTransform(size: CGSize, zoom: CGFloat, pan: CGSize) -> CGAffineTransform? {
+        guard extent.width > 0, extent.height > 0, size.width > 0, size.height > 0 else { return nil }
+        let scale = min(size.width / extent.width, size.height / extent.height) * zoom
+        return CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                 tx: size.width / 2 + pan.width, ty: size.height / 2 + pan.height)
+    }
+
+    func province(at location: CGPoint, transform: CGAffineTransform) -> String? {
+        let point = location.applying(transform.inverted())
+        return paths.reversed().first(where: { $0.path.contains(point) })?.name
     }
 
     struct ProvinceFeature {
@@ -221,7 +209,7 @@ enum FoodMapGeometry {
         let rings: [[CGPoint]] // 经纬度点
     }
 
-    static func loadFeatures(_ name: String) -> [ProvinceFeature] {
+    private static func loadFeatures(_ name: String) -> [ProvinceFeature] {
         guard let url = Bundle.main.url(forResource: "\(name).geojson", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
@@ -286,10 +274,7 @@ struct FoodMapView: View {
             }
         }
         .toast($vm.toast)
-        .onAppear {
-            vm.onAppear()
-            if vm.features.isEmpty { vm.loadFeatures() }
-        }
+        .onAppear { vm.onAppear() }
     }
 
     private func regionButton(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
@@ -305,20 +290,28 @@ struct FoodMapView: View {
 
     private var mapCanvas: some View {
         GeometryReader { geo in
+            let vm = app.foodMap
+            let geometry = vm.geometry
+            let zoom = vm.zoom
+            let transform = geometry.viewTransform(size: geo.size, zoom: zoom, pan: vm.panOffset)
+            let visited = vm.visitedProvinces
+            let isEurope = vm.region == "europe"
             ZStack(alignment: .bottomTrailing) {
-                Canvas { ctx, size in
-                    guard app.foodMap.dataReady else { return }
-                    for (_, path, visited) in app.foodMap.renderedPaths(size: size, features: app.foodMap.features) {
-                        ctx.fill(path, with: .color(visited ? Color(red: 0.702, green: 0.616, blue: 0.859) : Color(white: 0.941)))
-                        ctx.stroke(path, with: .color(Color(white: 0.8)), lineWidth: 0.5 / max(1, app.foodMap.zoom))
+                Canvas { ctx, _ in
+                    guard let transform else { return }
+                    ctx.concatenate(transform)
+                    // 变换同时缩放描边，换算回原先的屏幕线宽。
+                    let lineWidth = 0.5 / zoom / transform.a
+                    for (name, path) in geometry.paths {
+                        let province = isEurope ? name : FoodMapGeometry.toFullName(name)
+                        ctx.fill(path, with: .color(visited.contains(province) ? Color(red: 0.702, green: 0.616, blue: 0.859) : Color(white: 0.941)))
+                        ctx.stroke(path, with: .color(Color(white: 0.8)), lineWidth: lineWidth)
                     }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { location in
-                    let paths = app.foodMap.renderedPaths(size: geo.size, features: app.foodMap.features)
-                    for (name, path, _) in paths.reversed() where path.contains(location) {
-                        app.foodMap.selectProvince(name)
-                        return
+                    if let transform, let name = geometry.province(at: location, transform: transform) {
+                        vm.selectProvince(name)
                     }
                 }
                 .gesture(panZoomGesture)

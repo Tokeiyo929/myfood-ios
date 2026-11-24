@@ -325,21 +325,23 @@ enum SyncDiff {
         let stashQuotes = stashRaw["quotes"] as? [[String: Any]] ?? []
         var applied = 0
 
+        let changedIds = Set(st.remoteChangedIds).subtracting(conflicted)
         let changedRaw = stashFoods.filter { r in
             guard let id = r["id"] as? Int else { return false }
-            return st.remoteChangedIds.contains(id) && !conflicted.contains(id)
+            return changedIds.contains(id)
         }
         if !changedRaw.isEmpty { OfflineStore.mergeRecords(changedRaw); applied += changedRaw.count }
-        let deletable = st.remoteDeletedIds.filter { !conflicted.contains($0) }
-        for id in deletable { OfflineStore.removeRecord(id: id) }
+        let deletable = Set(st.remoteDeletedIds).subtracting(conflicted)
+        OfflineStore.removeRecords(ids: deletable)
         applied += deletable.count
 
+        let quoteIds = Set(st.remoteQuoteIds)
         let quoteRaw = stashQuotes.filter { r in
             guard let id = r["id"] as? Int else { return false }
-            return st.remoteQuoteIds.contains(id)
+            return quoteIds.contains(id)
         }
         if !quoteRaw.isEmpty { OfflineStore.mergeQuotes(quoteRaw); applied += quoteRaw.count }
-        for id in st.remoteQuoteDeletedIds { OfflineStore.removeQuote(id: id) }
+        OfflineStore.removeQuotes(ids: Set(st.remoteQuoteDeletedIds))
         applied += st.remoteQuoteDeletedIds.count
         return applied
     }

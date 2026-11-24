@@ -2,3 +2,7 @@
 *.ipa
 build/
 __pycache__/
+
+# Downloaded CI screenshots and logs
+/ci[0-9]*/
+/ci[0-9]*-*.png

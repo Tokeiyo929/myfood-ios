@@ -28,12 +28,7 @@ enum AutoTest {
                 check(DetailViewModel.parseWorth("yes") == "yes", "worth yes")
                 check(DetailViewModel.parseWorth(false) == "no", "worth Bool")
                 check(DetailViewModel.parseWorth(NSNull()) == "", "worth null")
-                let params = FoodMapGeometry.projectParams(vw: 400, vh: 400, minLon: 73, maxLon: 135, minLat: 18, maxLat: 53)
-                let point = FoodMapGeometry.projectPoint(CGPoint(x: 73, y: 53), params: params)
-                check(abs(Double(point.x) - params.offsetX) < 0.001 && abs(Double(point.y) - params.offsetY) < 0.001, "地图投影起点")
-                let ratio = (62 * params.cosLat * params.k) / (35 * params.k)
-                check(abs(ratio - 62 * cos(35.5 * .pi / 180) / 35) < 0.001, "地图投影cos校正")
-                check(abs(params.offsetY - (400.0 - 35 * params.k) / 2) < 0.001 && params.offsetY >= 0, "地图投影垂直居中不留大片空白")
+                checkMapGeometry(check)
                 // 轨迹纠偏（eviltransform 已知向量）+ 境外直通
                 let shanghai = GCJConverter.wgs84ToGcj02(lat: 31.1774276, lng: 121.5272106)
                 check(abs(shanghai.lat - 31.17530398364597) < 1e-4 && abs(shanghai.lng - 121.5315426) < 1e-4, "WGS84→GCJ02 符合 eviltransform 已知向量")
@@ -51,6 +46,34 @@ enum AutoTest {
     }
 
     #if DEBUG
+    private static func checkMapGeometry(_ check: (Bool, String) -> Void) {
+        let rings = [[CGPoint(x: 73, y: 53), CGPoint(x: 94, y: 18), CGPoint(x: 73, y: 18)],
+                     [CGPoint(x: 114, y: 53), CGPoint(x: 135, y: 18), CGPoint(x: 114, y: 18)]]
+        let map = FoodMapGeometry(features: [.init(name: "岛", rings: rings)])
+        let square = CGSize(width: 400, height: 400)
+        let wide = CGSize(width: 600, height: 300)
+        let pan = CGSize(width: -150, height: -50)
+        guard let path = map.paths.first?.path,
+              let fit = map.viewTransform(size: square, zoom: 1, pan: .zero),
+              let moved = map.viewTransform(size: wide, zoom: 2, pan: pan) else {
+            check(false, "地图可计算有效视口")
+            return
+        }
+        var starts = 0
+        path.forEach { if case .move = $0 { starts += 1 } }
+        check(starts == 2, "多岛地图每个环独立起笔，不连接离岛")
+        let bounds = path.applying(fit).boundingRect
+        let aspect: CGFloat = 62 * cos(35.5 * .pi / 180) / 35
+        check(abs(bounds.width - square.width) < 0.001 && abs(bounds.height - square.width / aspect) < 0.001,
+              "地图按中纬度校正经度并适配视口")
+        check(abs(bounds.midX - 200) < 0.001 && abs(bounds.midY - 200) < 0.001, "地图双向居中")
+        // 横屏时以高度适配。经度 115、纬度 25 在东岛，中央经线在两岛之间。
+        let scaledWidth = wide.height * aspect * 2
+        let east = CGPoint(x: 150 + (115.0 - 104) / 62 * scaledWidth, y: 280)
+        check(map.province(at: east, transform: moved) == "岛", "视口改变、缩放与平移后仍可点中岛")
+        check(map.province(at: CGPoint(x: 150, y: 280), transform: moved) == nil, "两岛间空白不会误选")
+    }
+
     @MainActor
     private static func uiRegression(check: (Bool, String) -> Void) async throws {
         TestFixture.install()
@@ -137,6 +160,28 @@ enum AutoTest {
         let image = await RemoteImageModel.shared.load(API.imageUrl("myfood/regression.png"))
         check(image != nil, "图片通过 fixture 会话加载和解码")
         let ocr = OCRViewModel(image: UIImage())
+        await ocr.recognize()
+        check(!ocr.recognized && ocr.text.isEmpty, "OCR 空图可正常结束")
+        let size = CGSize(width: 600, height: 200)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let mirrored = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            context.cgContext.translateBy(x: size.width, y: 0)
+            context.cgContext.scaleBy(x: -1, y: 1)
+            ("美食日记" as NSString).draw(at: CGPoint(x: 30, y: 30), withAttributes: [
+                .font: UIFont.boldSystemFont(ofSize: 96), .foregroundColor: UIColor.black
+            ])
+        }
+        if let pixels = mirrored.cgImage {
+            let photo = UIImage(cgImage: pixels, scale: 1, orientation: .upMirrored)
+            let mirroredOCR = OCRViewModel(image: photo)
+            await mirroredOCR.recognize()
+            check(mirroredOCR.text.contains("美食"), "OCR 按镜像照片的方向识别文字")
+        } else {
+            check(false, "OCR 镜像测试图可读取")
+        }
         ocr.text = "美食日记\n泡芙"
         ocr.selectionText = "泡芙"
         check(ocr.text == "美食日记\n泡芙", "OCR 全文按行保存供文本块展示")
@@ -169,13 +214,6 @@ enum AutoTest {
         geometry.endMagnify()
         geometry.magnify(2)
         check(abs(geometry.zoom - 2.4) < 0.001, "下次捏合沿用上次结束倍率")
-        let rings = [[CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 1, y: 1)],
-                     [CGPoint(x: 3, y: 0), CGPoint(x: 4, y: 0), CGPoint(x: 4, y: 1)]]
-        let paths = geometry.renderedPaths(size: CGSize(width: 400, height: 400), features: [.init(name: "岛", rings: rings)])
-        var starts = 0
-        paths.first?.path.forEach { if case .move = $0 { starts += 1 } }
-        check(starts == 2, "多岛地图每个环独立起笔，不连接离岛")
-
         var local = saved
         local["id"] = -1
         local["client_key"] = "local-detail"
